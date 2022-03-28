@@ -572,7 +572,8 @@ void WriteHeader(const std::string& fname, const std::string& header)
 }
 
 void
-SaveOutput(const std::vector<std::vector<vtkm::Vec3f>>& traces,
+SaveOutput(std::map<std::string, std::vector<std::string>>& args,
+           const std::vector<std::vector<vtkm::Vec3f>>& traces,
            const vtkm::cont::ArrayHandle<vtkm::Vec2f>& outRZ,
            const vtkm::cont::ArrayHandle<vtkm::Vec2f>& outTP,
            const vtkm::cont::ArrayHandle<vtkm::Id>& outID,
@@ -628,11 +629,23 @@ SaveOutput(const std::vector<std::vector<vtkm::Vec3f>>& traces,
 
   //save to adios
   bool firstTime = false;
+  std::string argString = "";
   if (adiosStuff.find("output") == adiosStuff.end())
   {
     adiosStuff["output"] = new adiosS(adios, adiosNm, "output", adios2::Mode::Write);
     firstTime = true;
+
+    argString = "";
+    for (const auto& x : args)
+    {
+      std::string arg = x.first;
+      for (const auto& y : x.second)
+        arg = arg + " " + y;
+      arg = arg + "\n";
+      argString = argString + arg;
+    }
   }
+
   adiosS* outputStuff = adiosStuff["output"];
 
   std::size_t nPts = static_cast<std::size_t>(outRZ.GetNumberOfValues());
@@ -644,6 +657,7 @@ SaveOutput(const std::vector<std::vector<vtkm::Vec3f>>& traces,
 
   if (firstTime)
   {
+    outputStuff->io.DefineAttribute<std::string>("Arguments", argString);
     std::vector<std::size_t> shape = {nPts*2}, offset = {0}, size = {nPts*2};
     outputStuff->io.DefineVariable<vtkm::FloatDefault>("RZ", shape, offset, size);
     outputStuff->io.DefineVariable<vtkm::FloatDefault>("ThetaPsi", shape, offset, size);
@@ -764,7 +778,7 @@ Poincare(const vtkm::cont::DataSet& ds,
   }
 
   std::string outFileName = args["--output"][0];
-  SaveOutput(traces, outRZ, outTP, outID, outFileName, timeStep);
+  SaveOutput(args, traces, outRZ, outTP, outID, outFileName, timeStep);
 }
 
 vtkm::cont::ArrayHandle<vtkm::FloatDefault>
