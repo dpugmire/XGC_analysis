@@ -1465,29 +1465,11 @@ GeneratePsiRangeSeeds(std::map<std::string, std::vector<std::string>>& args,
       }
       if (!found)
         continue;
-
-/*
-
-      while (true)
-      {
-        r0 = r1;
-        R = xgcParams.eq_axis_r + r0*cost;
-        Z = xgcParams.eq_axis_z + r0*sint;
-        r1 = r0+dR;
-
-        vtkm::Vec2f pt(R, Z);
-        psi = InterpolatePsi(pt, coeff, ncoeff, nrz, rzmin, drz, xgcParams);
-        std::cout<<"R: "<<r0<<" "<<r1<<" --> "<<pt<<" psi(r0)= "<<psi<<std::endl;
-        if (psi >= psiTarget)
-          break;
-      }
-*/
       auto diffPsi = psi - psiTarget;
       //std::cout<<"   Pt_"<<j<<" RZ= "<<R<<" "<<Z<<"  psiN= "<<psi /xgcParams.eq_x_psi;
       //std::cout<<std::setprecision(15)<<" diff= "<<diffPsi/xgcParams.eq_x_psi<<std::endl;
-
-
       //std::cout<<std::setprecision(15)<<"  psiTarget= "<<psiTarget<<"  psi= "<<psi<<std::endl;
+
       //Now, do a binary search to find psi between (r0, r1)
       int cnt = 0;
       while (diffPsi > 1e-10 && cnt < 100)
@@ -1513,19 +1495,16 @@ GeneratePsiRangeSeeds(std::map<std::string, std::vector<std::string>>& args,
 
       vtkm::Id ID = j*numThetas + i;
       if (bothDirections)
-        ID = j*numThetas*2 + i + 0;
+        ID = 2*(j*numThetas + i);
 
-      std::cout<<i<<" "<<j<<" ID: "<<ID<<" PT= "<<(psi/xgcParams.eq_x_psi)<<" "<<theta<<std::endl;
+      //std::cout<<i<<" "<<j<<" ID: "<<ID<<" PT= "<<(psi/xgcParams.eq_x_psi)<<" "<<theta<<std::endl;
       vtkm::Vec3f pt_rpz(R, 0, Z);
       vtkm::Particle p({pt_rpz, ID});
       seeds.push_back(p);
 
       if (bothDirections)
       {
-        if (bothDirections)
-          ID = j*numThetas*2 + i + 1;
-        std::cout<<i<<"   RevDir: ID= "<<ID<<std::endl;
-        vtkm::Particle p2({pt_rpz, ID});
+        vtkm::Particle p2({pt_rpz, ID+1});
         p2.ReverseDirection = true;
         seeds.push_back(p2);
       }

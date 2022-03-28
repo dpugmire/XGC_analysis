@@ -460,6 +460,7 @@ public:
       return;
     }
 
+    bool revDir = particle.ReverseDirection;
     while (true)
     {
       vtkm::Vec3f newPos;
@@ -467,7 +468,7 @@ public:
       DBG("   "<<particle.Pos<<" #s= "<<particle.NumSteps<<std::endl);
 
 
-      if (!this->TakeRK4Step(particle.Pos, pInfo, locator, cellSet, coords,
+      if (!this->TakeRK4Step(particle.Pos, revDir, pInfo, locator, cellSet, coords,
                              AsPhiFF, DAsPhiFF_RZP, Coeff_1D, Coeff_2D, B_RZP, newPos))
       {
         break;
@@ -542,6 +543,7 @@ public:
   //template <typename LocatorType>
   VTKM_EXEC
   bool TakeRK4Step(const vtkm::Vec3f& ptRPZ,
+                   bool revDir,
                    ParticleInfo& pInfo,
                    const LocatorType& locator,
                    const CellSetType& cellSet,
@@ -562,24 +564,31 @@ public:
     //Yn+1 = Yn + 1/6 h (k1+2k2+2k3+k4)
     vtkm::Vec3f p0 = ptRPZ, tmp = ptRPZ;
 
+    vtkm::FloatDefault h = this->StepSize, h_2 = this->StepSize_2;
+    if (revDir)
+    {
+      h = -h;
+      h_2 = -h_2;
+    }
+
     DBG("    ****** K1"<<std::endl);
     bool v1, v2, v3, v4;
     v1 = this->Evaluate(tmp, pInfo, locator, cellSet, coords, AsPhiFF, DAsPhiFF_RZP, Coeff_1D, Coeff_2D, B_RZP, k1);
-    tmp = p0 + k1*this->StepSize_2;
+    tmp = p0 + k1*h_2;
 
     DBG("    ****** K2"<<std::endl);
     v2 = this->Evaluate(tmp, pInfo, locator, cellSet, coords, AsPhiFF, DAsPhiFF_RZP, Coeff_1D, Coeff_2D, B_RZP, k2);
-    tmp = p0 + k2*this->StepSize_2;
+    tmp = p0 + k2*h_2;
 
     DBG("    ****** K3"<<std::endl);
     v3 = this->Evaluate(tmp, pInfo, locator, cellSet, coords, AsPhiFF, DAsPhiFF_RZP, Coeff_1D, Coeff_2D, B_RZP, k3);
-    tmp = p0 + k3*this->StepSize;
+    tmp = p0 + k3*h;
 
     DBG("    ****** K4"<<std::endl);
     v4 = this->Evaluate(tmp, pInfo, locator, cellSet, coords, AsPhiFF, DAsPhiFF_RZP, Coeff_1D, Coeff_2D, B_RZP, k4);
 
     vtkm::Vec3f vec = (k1 + 2*k2 + 2*k3 + k4)/6.0;
-    res = p0 + this->StepSize * vec;
+    res = p0 + h * vec;
 
     if (!(v1&&v2&&v3&&v4))
     {

@@ -42,7 +42,7 @@ jsrun -n1 -a1 -c20 -g1 ./examples/poincare/Poincare  --vField B --dir ../data/ru
 Running Streaming case:
 Reading panout.1
 
-jsrun -n1 -a1 -c20 -g1 ./examples/poincare/Poincare  --dir <data directory> --gpu  --output OUT.1 --numPunc 100 --gpuParams 256 128 --stepSize 0.05 --streaming panout.1.bp  --psiRange 0.95 1.05 100 12 --xml ../poincare.xml
+jsrun -n1 -a1 -c20 -g1 ./examples/poincare/Poincare  --dir <data directory> --gpu  --output OUT.1 --numPunc 100 --gpuParams 256 128 --stepSize 0.05 --streaming <directory>/panout.1.bp  --psiRange 0.95 1.05 100 12 --xml ../poincare.xml
 
 
 Note: this uses --useLinearB while I fix the issue with interpolation.
