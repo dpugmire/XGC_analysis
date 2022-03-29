@@ -38,18 +38,20 @@ def ParseArrays(data, ids, skip, maxPunc) :
     return out
 
 
+print('Reading RZ.')
 rz=f.read('RZ')
 
 pRZ = ParseArrays(rz, ID, particle_skip, 1000)
 print('saving ', outRZ)
-np.savetxt(outRZ, pRZ, delimiter=",", fmt='%d, %lf, %lf, %d', header='ID, R, Z, PUNC')
+np.savetxt(outRZ, pRZ, delimiter=",", fmt='%d, %lf, %lf, %d', header='ID, R, Z, PUNC', comments='')
 print('Done.')
 pRZ = []
 
+print('Reading TP.')
 tp=f.read('ThetaPsi')
 
 pTP = ParseArrays(tp, ID, particle_skip, 1000)
 print('saving ', outTP)
-np.savetxt(outTP, pTP, delimiter=",", fmt='%d, %lf, %lf, %d', header='ID, THETA, PSI, PUNC')
+np.savetxt(outTP, pTP, delimiter=",", fmt='%d, %lf, %lf, %d', header='ID, THETA, PSI, PUNC', comments='')
 print('Done.')
 pTP = []

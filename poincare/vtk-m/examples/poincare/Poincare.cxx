@@ -1646,6 +1646,10 @@ GenerateSeeds(const vtkm::cont::DataSet& ds,
     engine.Get(v, tmp, adios2::Mode::Sync);
     engine.Close();
 
+    bool bothDirections = false;
+    if (args.find("--bothDirections") != args.end())
+      bothDirections = true;
+
     int n = tmp.size();
     int id = 0;
     for (int i = 0; i < n; i += (9*skip))
@@ -1653,8 +1657,17 @@ GenerateSeeds(const vtkm::cont::DataSet& ds,
       auto R = static_cast<vtkm::FloatDefault>(tmp[i + 0]);
       auto Z = static_cast<vtkm::FloatDefault>(tmp[i + 1]);
 
-      seeds.push_back(vtkm::Particle(vtkm::Vec3f(R, 0.0, Z), id++));
+      vtkm::Particle p(vtkm::Vec3f(R, 0.0, Z), id++);
+      seeds.push_back(p);
+
+      if (bothDirections)
+      {
+        vtkm::Particle p2(vtkm::Vec3f(R, 0.0, Z), id++);
+        p2.ReverseDirection = true;
+        seeds.push_back(p2);
+      }
     }
+
   }
   else if (args.find("--parse") != args.end())
   {
