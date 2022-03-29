@@ -1269,10 +1269,8 @@ public:
     vtkm::Id planeIdx0, planeIdx1, numRevs;
     vtkm::FloatDefault phiN, Phi0, Phi1, T;
     this->GetPlaneIdx(Phi, phiN, planeIdx0, planeIdx1, Phi0, Phi1, numRevs, T);
-    if (planeIdx0 == 48)
-    {
-      printf("Problem.... plane wraparound\n");
-    }
+    //std::cout<<"Phi= "<<Phi<<" "<<(Phi/vtkm::TwoPi())<<" planes= "<<planeIdx0<<" "<<planeIdx1<<std::endl;
+
     vtkm::Vec3f B0_rpz(pInfo.B0_rzp[0], pInfo.B0_rzp[2], pInfo.B0_rzp[1]);
     vtkm::Vec3f ff_pt_rpz;
     this->CalcFieldFollowingPt({R,phiN,Z}, B0_rpz, Phi0, Phi1, coeff_1D, coeff_2D, ff_pt_rpz);
@@ -1387,6 +1385,10 @@ public:
     if (phi < 0)
     {
       phiN += ((1+numRevs) * vtkm::TwoPi());
+    }
+    else if (phi > vtkm::TwoPi())
+    {
+      phiN -= (numRevs * vtkm::TwoPi());
     }
 
     plane0 = vtkm::Floor(phiN / this->dPhi);
