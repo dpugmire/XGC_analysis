@@ -602,30 +602,28 @@ SaveOutput(std::map<std::string, std::vector<std::string>>& args,
   std::cout<<"EXISTS: "<<tExists<<" "<<pExists<<" "<<ptpExists<<std::endl;
 
   //Write headers.
-  if (!tExists)
-    WriteHeader(tracesNm, "ID, R, Z, T");
-
-  std::ofstream outTraces;
-  outTraces.open(tracesNm, std::ofstream::app);
-  //write traces
-  for (int i = 0; i < (int)traces.size(); i++)
+  if (!traces.empty())
   {
-    for (const auto& pt : traces[i])
-    {
-      auto R = pt[0];
-      auto Z = pt[2];
-      auto PHI_N = pt[1];
-      while (PHI_N < 0)
-        PHI_N += vtkm::TwoPi();
+    if (!tExists)
+      WriteHeader(tracesNm, "ID, R, Z, T");
 
-      outTraces<<i<<", "<<R<<", "<<Z<<", "<<PHI_N<<std::endl;
+    std::ofstream outTraces;
+    outTraces.open(tracesNm, std::ofstream::app);
+    //write traces
+    for (int i = 0; i < (int)traces.size(); i++)
+    {
+      for (const auto& pt : traces[i])
+      {
+        auto R = pt[0];
+        auto Z = pt[2];
+        auto PHI_N = pt[1];
+        while (PHI_N < 0)
+          PHI_N += vtkm::TwoPi();
+
+        outTraces<<i<<", "<<R<<", "<<Z<<", "<<PHI_N<<std::endl;
+      }
     }
   }
-  /*
-  vtkm::io::VTKDataSetWriter writer1(puncNm), writer2(puncThetaPsiNm);
-  writer1.WriteDataSet(dsRZ);
-  writer2.WriteDataSet(dsTP);
-  */
 
   //save to adios
   bool firstTime = false;
@@ -678,41 +676,6 @@ SaveOutput(std::map<std::string, std::vector<std::string>>& args,
   outputStuff->engine.Put<int>(vTS, &timeStep);
   outputStuff->engine.EndStep();
 }
-
-/*
-vtkm::cont::ArrayHandle<vtkm::Particle>
-CreateParticles(const std::vector<vtkm::Vec3f>& pts,
-                std::map<std::string, std::vector<std::string>>& args)
-{
-  vtkm::cont::ArrayHandle<vtkm::Particle> seeds;
-  vtkm::Id n = static_cast<vtkm::Id>(pts.size());
-  seeds.Allocate(n);
-  auto sPortal = seeds.WritePortal();
-
-  bool isPsiRange = false;
-  int numPts = -1, numTheta = -1;
-  if (args.find("--psiRange") != args.end())
-  {
-    auto vals = args["--psiRange"];
-    numPts = std::atoi(vals[2].c_str());
-    numTheta = std::atoi(vals[3].c_str());
-    if (numTheta > 1)
-      isPsiRange = true;
-  }
-
-  for (vtkm::Id i = 0; i < n; i++)
-  {
-    vtkm::Id pid = i;
-
-    vtkm::Particle p(pts[i], pid);
-    sPortal.Set(i, p);
-  }
-
-  for (vtkm::Id i = 0; i < (vtkm::Id)pts.size(); i++)
-    s.push_back(vtkm::Particle(pts[i], i));
-  auto seeds = vtkm::cont::make_ArrayHandle(s, vtkm::CopyFlag::On);
-}
-*/
 
 void
 Poincare(const vtkm::cont::DataSet& ds,
