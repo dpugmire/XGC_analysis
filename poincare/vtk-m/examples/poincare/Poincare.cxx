@@ -129,7 +129,18 @@ ParseArgs(int argc, char **argv, std::map<std::string, std::vector<std::string>>
     std::cout<<"}\n";
   }
 
-  return true;
+  bool retVal = true;
+
+  auto requiredArgs = {"--dir", "--output", "--numPunc", "--stepSize"};
+
+  for (const auto& a : requiredArgs)
+    if (args.find(a) == args.end())
+    {
+      std::cerr<<"Error. Argument missing: "<<a<<std::endl;
+      retVal = false;
+    }
+
+  return retVal;
 }
 
 
@@ -177,6 +188,21 @@ public:
     this->io = a.io;
     this->engine = a.engine;
     return *this;
+  }
+
+  static bool Exists(const std::string& fname,
+                     const std::map<std::string, std::string> &args)
+  {
+    std::string pathNm = ".";
+    auto x = args.find("--dir")->second;
+    if (x.size() > 0) pathNm = x;
+    std::string fullName = pathNm + "/" + fname;
+
+    std::ifstream ifile;
+    ifile.open(fullName);
+    if (ifile)
+      return true;
+    return false;
   }
 
   std::string ioName, fileName;
@@ -278,12 +304,28 @@ ReadB(adiosS* stuff,
 }
 
 void
+printEntry(int zi, int ri, const std::vector<double>& v, int vtkmNotUsed(NZ), int NR)
+{
+  int idx = (zi*NR + ri)*16;
+
+  std::cout<<"X["<<zi<<" "<<ri<<"] ="<<std::endl;
+  for (int i = 0; i < 4; i++)
+  {
+    for (int j = 0; j < 4; j++)
+      std::cout<<" "<<v[idx + i*4 + j]<<" ";
+    std::cout<<std::endl;
+  }
+}
+
+void
 ReadPsiInterp(adiosS* eqStuff,
               adiosS* interpStuff,
+              adiosS* unitsStuff,
               vtkm::cont::DataSet& ds,
               XGCParameters& xgcParams,
               std::map<std::string, std::vector<std::string>>& args)
 {
+  eqStuff->engine.Get(eqStuff->io.InquireVariable<int>("eq_mpsi"), &xgcParams.eq_mpsi, adios2::Mode::Sync);
   eqStuff->engine.Get(eqStuff->io.InquireVariable<int>("eq_mr"), &xgcParams.eq_mr, adios2::Mode::Sync);
   eqStuff->engine.Get(eqStuff->io.InquireVariable<int>("eq_mz"), &xgcParams.eq_mz, adios2::Mode::Sync);
   eqStuff->engine.Get(eqStuff->io.InquireVariable<double>("eq_axis_r"), &xgcParams.eq_axis_r, adios2::Mode::Sync);
@@ -295,19 +337,32 @@ ReadPsiInterp(adiosS* eqStuff,
   eqStuff->engine.Get(eqStuff->io.InquireVariable<double>("eq_x_psi"), &xgcParams.eq_x_psi, adios2::Mode::Sync);
   eqStuff->engine.Get(eqStuff->io.InquireVariable<double>("eq_x_r"), &xgcParams.eq_x_r, adios2::Mode::Sync);
   eqStuff->engine.Get(eqStuff->io.InquireVariable<double>("eq_x_z"), &xgcParams.eq_x_z, adios2::Mode::Sync);
-  eqStuff->engine.Get(eqStuff->io.InquireVariable<double>("eq_x_z"), &xgcParams.eq_x_z, adios2::Mode::Sync);
+  if (unitsStuff != nullptr)
+    unitsStuff->engine.Get(unitsStuff->io.InquireVariable<int>("sml_wedge_n"), &xgcParams.sml_wedge_n, adios2::Mode::Sync);
 
   ReadOther(eqStuff, ds, "eq_I");
   ReadOther(eqStuff, ds, "eq_psi_grid");
   ReadOther(eqStuff, ds, "eq_psi_rz");
-  ReadOther(eqStuff, ds, "eq_psi_grid");
   ReadOther(interpStuff, ds, "coeff_1D", "one_d_cub_psi_acoef");
+  ReadOther(interpStuff, ds, "coeff_2D", "psi_bicub_acoef");
 
+  vtkm::cont::ArrayHandle<vtkm::FloatDefault> psiGrid;
+  ds.GetField("eq_psi_grid").GetData().AsArrayHandle(psiGrid);
+  xgcParams.itp_min_psi = psiGrid.ReadPortal().Get(0);
+  xgcParams.itp_max_psi = psiGrid.ReadPortal().Get(xgcParams.eq_mpsi-1);
+
+
+#if 0
   std::vector<double> tmp2D;
 //  interpStuff->engine.Get(interpStuff->io.InquireVariable<double>("one_d_cub_psi_acoef"),
 //                          tmp1D, adios2::Mode::Sync);
   interpStuff->engine.Get(interpStuff->io.InquireVariable<double>("psi_bicub_acoef"),
                           tmp2D, adios2::Mode::Sync);
+
+  ds.AddField(vtkm::cont::make_Field("coeff_2D",
+                                     vtkm::cont::Field::Association::WHOLE_MESH,
+                                     arr_coeff2D,
+                                     vtkm::CopyFlag::On));
 
   /*
   vtkm::Id n = ds.GetField("eq_psi_grid").GetData().GetNumberOfValues();
@@ -330,7 +385,18 @@ ReadPsiInterp(adiosS* eqStuff,
 
   int idx = 0;
   int nr = xgcParams.eq_mr-1, nz = xgcParams.eq_mz-1;
-  //int ni = 150, nj = 150;
+
+  std::cout<<"   coeff_1D.size= "<<tmp2D.size()<<std::endl;
+
+  printEntry(0, 250, tmp2D, nz, nr);
+  printEntry(1023, 250, tmp2D, nz, nr);
+  printEntry(1023, 0, tmp2D, nz, nr);
+
+
+  printEntry(167, 213, tmp2D, nz, nr);
+  printEntry(213, 167, tmp2D, nz, nr);
+
+
   std::vector<std::vector<std::vector<std::vector<double>>>> coef2D;
   coef2D.resize(nz);
   for (int i = 0; i < nz; i++)
@@ -397,7 +463,7 @@ ReadPsiInterp(adiosS* eqStuff,
     //Put this on a 2D grid for debugging...
     vtkm::Vec2f origin2D(xgcParams.eq_min_r, xgcParams.eq_min_z);
     vtkm::Vec2f spacing2D((xgcParams.eq_max_r-xgcParams.eq_min_r)/double(xgcParams.eq_mr-1), (xgcParams.eq_max_z-xgcParams.eq_min_z)/double(xgcParams.eq_mz-1));
-    auto ds2D = vtkm::cont::DataSetBuilderUniform::Create(vtkm::Id2(xgcParams.eq_mr, xgcParams.eq_mr),
+    auto ds2D = vtkm::cont::DataSetBuilderUniform::Create(vtkm::Id2(xgcParams.eq_mr, xgcParams.eq_mz),
                                                           origin2D, spacing2D);
 
     std::vector<std::vector<std::vector<vtkm::FloatDefault>>> cij(4);
@@ -429,32 +495,54 @@ ReadPsiInterp(adiosS* eqStuff,
     vtkm::io::VTKDataSetWriter writer("psiGrid.vtk");
     writer.WriteDataSet(ds2D);
   }
+#endif
 
 
-//  ds.GetField("B_RZP").GetData().AsArrayHandle(b3d);
-//  std::vector<vtkm::Vec3f> B2D(
+  if (args.find("--dumpPsiGrid") != args.end())
+  {
+    //Put this on a 2D grid for debugging...
+    vtkm::Vec2f origin2D(xgcParams.eq_min_r, xgcParams.eq_min_z);
+    vtkm::Vec2f spacing2D((xgcParams.eq_max_r-xgcParams.eq_min_r)/double(xgcParams.eq_mr-1), (xgcParams.eq_max_z-xgcParams.eq_min_z)/double(xgcParams.eq_mz-1));
+    auto ds2D = vtkm::cont::DataSetBuilderUniform::Create(vtkm::Id2(xgcParams.eq_mr, xgcParams.eq_mz),
+                                                          origin2D, spacing2D);
 
-  /*
-  vtkm::io::VTKDataSetWriter writer("psiGrid.vtk");
-  writer.WriteDataSet(ds2D);
-  vtkm::io::VTKDataSetWriter writer2("grid.vtk");
-  writer2.WriteDataSet(ds);
-  */
+    vtkm::cont::ArrayHandle<vtkm::FloatDefault> carr;
+    ds.GetField("coeff_2D").GetData().AsArrayHandle(carr);
+    auto carrPortal = carr.ReadPortal();
 
+    std::vector<std::vector<std::vector<vtkm::FloatDefault>>> cij(4);
+    for (int k = 0; k < 4; k++) cij[k].resize(4);
 
-  /*
-  auto v = stuff->io.InquireVariable<double>("eq_psi_rz");
-  std::vector<double> tmp;
-  stuff->engine.Get(v, tmp, adios2::Mode::Sync);
+    int nr = xgcParams.eq_mr-1, nz = xgcParams.eq_mz-1;
+    for (int zi = 0; zi < nz; zi++)
+      for (int ri = 0; ri < nr; ri++)
+      {
+        vtkm::Id idx = (zi*nr + ri)*16;
+        for (int k = 0; k < 4; k++)
+          for (int m = 0; m < 4; m++)
+          {
+            cij[k][m].push_back(carrPortal.Get(idx + k*4 + m));
+          }
+      }
 
-  std::cout<<"eq_psi_rz: "<<tmp.size()<<std::endl;
-  for (int i = eq_mr; i < 2*eq_mr; i++)
-    std::cout<<"eq_psi_rz["<<i<<"] = "<<tmp[i]<<std::endl;
-  */
+    for (int k = 0; k < 4; k++)
+    {
+      for (int m = 0; m < 4; m++)
+      {
+        char nm[32];
+        sprintf(nm, "c%d%d", k,m);
+        //std::cout<<"Add cij: "<<nm<<" "<<cij[k][m].size()<<std::endl;
+        ds2D.AddCellField(nm, cij[k][m]);
+      }
+    }
 
-
-  //Let's evaluate the b field.
-  //vtkm::FloatDefault R = 2, Z = 0;
+    vtkm::cont::ArrayHandle<vtkm::FloatDefault> arr;
+    vtkm::cont::ArrayHandle<vtkm::Vec3f> b3d;
+    ds.GetField("eq_psi_rz").GetData().AsArrayHandle(arr);
+    ds2D.AddPointField("eq_psi_rz", arr);
+    vtkm::io::VTKDataSetWriter writer("psiGrid.vtk");
+    writer.WriteDataSet(ds2D);
+  }
 }
 
 vtkm::cont::DataSet
@@ -730,6 +818,7 @@ Poincare(const vtkm::cont::DataSet& ds,
   if (args.find("--traces") != args.end()) useTraces = std::atoi(args["--traces"][0].c_str());
   if (useTraces)
   {
+    traces.resize(1);
     auto portal = tracesArr.ReadPortal();
     vtkm::Id n = portal.GetNumberOfValues();
     for (vtkm::Id i = 0; i < n; i++)
@@ -984,16 +1073,23 @@ ReadStaticData(std::map<std::string, std::vector<std::string>>& args,
   adiosStuff["equil"] = new adiosS(adios, "xgc.equil.bp", "equil", adiosArgs);
   adiosStuff["bfield"] = new adiosS(adios, "xgc.bfield.bp", "bfield", adiosArgs);
   adiosStuff["coeff"] = new adiosS(adios, coeffFile, "coeff", adiosArgs);
+  if (adiosS::Exists("xgc.units.bp", adiosArgs))
+    adiosStuff["units"] = new adiosS(adios, "xgc.units.bp", "units", adiosArgs);
+  else
+    adiosStuff["units"] = nullptr;
 
   auto meshStuff = adiosStuff["mesh"];
   auto equilStuff = adiosStuff["equil"];
   auto coeffStuff = adiosStuff["coeff"];
   auto bfieldStuff = adiosStuff["bfield"];
+  auto unitsStuff = adiosStuff["units"];
 
   meshStuff->engine.BeginStep();
   equilStuff->engine.BeginStep();
   coeffStuff->engine.BeginStep();
   bfieldStuff->engine.BeginStep();
+  if (unitsStuff)
+    unitsStuff->engine.BeginStep();
 
   meshStuff->engine.Get(meshStuff->io.InquireVariable<int>("n_n"), &xgcParams.numNodes, adios2::Mode::Sync);
   meshStuff->engine.Get(meshStuff->io.InquireVariable<int>("n_t"), &xgcParams.numTri, adios2::Mode::Sync);
@@ -1009,7 +1105,7 @@ ReadStaticData(std::map<std::string, std::vector<std::string>>& args,
   std::cout<<"********                  PSIN m/M = "<<xgcParams.psi_min*xgcParams.eq_x_psi<<" "<<xgcParams.psi_max*xgcParams.eq_x_psi<<std::endl;
 
   auto ds = ReadMesh(meshStuff, xgcParams);
-  ReadPsiInterp(equilStuff, coeffStuff, ds, xgcParams, args);
+  ReadPsiInterp(equilStuff, coeffStuff, unitsStuff, ds, xgcParams, args);
   ReadScalar(meshStuff, xgcParams, ds, "psi");
   ReadB(bfieldStuff, xgcParams, ds);
 
@@ -1642,15 +1738,16 @@ GenerateSeeds(const vtkm::cont::DataSet& ds,
     vtkm::Id pid = 0;
     while (std::getline(seedFile, line))
     {
-      vtkm::FloatDefault r, p, z;
+      vtkm::FloatDefault r, z, p;
 #ifdef VTKM_USE_DOUBLE_PRECISION
-      sscanf(line.c_str(), "%lf, %lf, %lf", &r, &p, &z);
+      sscanf(line.c_str(), "%lf, %lf, %lf", &r, &z, &p);
 #else
-      sscanf(line.c_str(), "%f, %f, %f", &r, &p, &z);
+      sscanf(line.c_str(), "%f, %f, %f", &r, &z, &p);
 #endif
       seeds.push_back({{r,p,z}, pid});
       pid++;
     }
+    std::cout<<"Seeds= "<<seeds<<std::endl;
   }
 
   if (args.find("--dumpSeeds") != args.end())
@@ -1747,7 +1844,8 @@ main(int argc, char** argv)
   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
   std::map<std::string, std::vector<std::string>> args;
-  ParseArgs(argc, argv, args);
+  if (!ParseArgs(argc, argv, args))
+    return 0;
 
   if (args.find("--gpuParams") != args.end())
   {
@@ -1885,6 +1983,20 @@ main(int argc, char** argv)
 
 ./examples/poincare/Poincare  --vField B --dir ../data/XGC_GB/test_GB_small_su455 --traces 0 --useHighOrder --turbulence 1 --psiRange .1 .7 10 4 --openmp  --output bumm --numPunc 100 --gpuParams 256 128 --stepSize 0.05 --streaming xgc.3d.panout.5.bp --userLinearB
 
+
+
+*/
+
+
+/*
+
+ITER:
+0 point?      : 6.362548633399328, 0.5648666773221587
+interior point:  6.234733194519893, 0.5953562419309504
+
+i=6500 : 5.197881014778669 -1.9994832294333764
+
+i=7300 : 4.866152226365543 -2.042357129245992
 
 
 */

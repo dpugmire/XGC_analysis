@@ -19,7 +19,8 @@ f=adios2.open(inFile, 'r')
 tp=f.read('ThetaPsi')
 rz=f.read('RZ')
 ID=f.read('ID')
-TS=f.read('TimeStep')
+#TS=f.read('TimeStep')
+TS = [0]
 
 n = int(len(tp) / 2)
 

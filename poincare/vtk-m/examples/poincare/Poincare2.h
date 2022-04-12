@@ -125,11 +125,12 @@ public:
     , SaveTraces(saveTraces)
   {
     this->NumPlanes = xgcParams.numPlanes;
+    this->Period = vtkm::TwoPi() / static_cast<vtkm::FloatDefault>(xgcParams.sml_wedge_n);
     this->NumNodes = xgcParams.numNodes;
-    this->dPhi = vtkm::TwoPi()/static_cast<vtkm::FloatDefault>(this->NumPlanes);
+    this->dPhi = this->Period/static_cast<vtkm::FloatDefault>(this->NumPlanes);
     this->StepSize_2 = this->StepSize / 2.0;
     this->StepSize_6 = this->StepSize / 6.0;
-
+    std::cout<<"************************ NumPlanes= "<<this->NumPlanes<<std::endl;
 
     this->nr = xgcParams.eq_mr-1;
     this->nz = xgcParams.eq_mz-1;
@@ -137,18 +138,30 @@ public:
     this->rmax = xgcParams.eq_max_r;
     this->zmin = xgcParams.eq_min_z;
     this->zmax = xgcParams.eq_max_z;
-    this->EqAxisR = xgcParams.eq_axis_r;
-    this->EqAxisZ = xgcParams.eq_axis_z;
-    this->EqXPsi = xgcParams.eq_x_psi;
+    this->eq_axis_r = xgcParams.eq_axis_r;
+    this->eq_axis_z = xgcParams.eq_axis_z;
+    this->eq_x_r = xgcParams.eq_x_r;
+    this->eq_x_z = xgcParams.eq_x_z;
+    this->eq_x_psi = xgcParams.eq_x_psi;
+    this->eq_x2_r = xgcParams.eq_axis_r;
+    this->eq_x2_z = xgcParams.eq_max_z;
+    this->eq_x2_psi = xgcParams.eq_x_psi;
+    this->eq_x_slope = -(this->eq_x_r - this->eq_axis_r) / (this->eq_x_z - this->eq_axis_z);
+    this->eq_x2_slope = -(this->eq_x2_r - this->eq_axis_r) / (this->eq_x2_z - this->eq_axis_z);
+
     this->dr = (xgcParams.eq_max_r - xgcParams.eq_min_r) / vtkm::FloatDefault(this->nr);
     this->dz = (xgcParams.eq_max_z - xgcParams.eq_min_z) / vtkm::FloatDefault(this->nz);
     this->dr_inv = 1.0/this->dr;
     this->dz_inv = 1.0/this->dz;
 
-    this->ncoeff = xgcParams.eq_mr-1;
+    this->ncoeff_r = xgcParams.eq_mr-1;
+    this->ncoeff_z = xgcParams.eq_mz-1;
+    this->ncoeff_psi = xgcParams.eq_mpsi-1;
     this->min_psi = xgcParams.psi_min;
     this->max_psi = xgcParams.psi_max;
-    this->one_d_cub_dpsi_inv = 1.0 / ((this->max_psi-this->min_psi)/vtkm::FloatDefault(this->ncoeff));
+    this->itp_min_psi = xgcParams.itp_min_psi;
+    this->itp_max_psi = xgcParams.itp_max_psi;
+    this->one_d_cub_dpsi_inv = 1.0 / ((this->max_psi-this->min_psi)/vtkm::FloatDefault(this->ncoeff_psi));
   }
 
   template <typename T>
@@ -191,7 +204,7 @@ public:
     //Get the coeffcients (z,r,4,4)
     vtkm::Matrix<vtkm::FloatDefault, 4, 4> acoeff;
     //vtkm::Id offset = (r_i * this->ncoeff + z_i) * 16; //DRP
-    vtkm::Id offset = (z_i * ncoeff + r_i) * 16;
+    vtkm::Id offset = (z_i * this->ncoeff_r + r_i) * 16;
 
     /*
     std::cout<<"InterpolatePsi: "<<vtkm::Vec2f(R,Z)<<std::endl;
@@ -203,8 +216,15 @@ public:
 
     vtkm::FloatDefault psi, dpsi_dr, dpsi_dz, d2psi_d2r, d2psi_drdz, d2psi_d2z;
     this->EvalBicub2(R, Z, Rc, Zc, offset, Coeff_2D, psi,dpsi_dr,dpsi_dz,d2psi_drdz,d2psi_d2r,d2psi_d2z);
+    if (psi < 0)
+      psi = 0;
 
-    vtkm::FloatDefault fld_I = this->I_interpol(psi, 0, Coeff_1D);
+    bool isR12 = this->IsRegion12(R,Z,psi);
+    vtkm::FloatDefault fld_I;
+    if (!isR12)
+      fld_I = this->I_interpol(psi, 0, 3, Coeff_1D);
+    else
+      fld_I = this->I_interpol(psi, 0, 0, Coeff_1D);
 
     vtkm::FloatDefault over_r = 1/R;
     vtkm::FloatDefault Br = -dpsi_dz * over_r;
@@ -212,6 +232,40 @@ public:
     vtkm::FloatDefault Bp = fld_I * over_r;
 
     return vtkm::Vec3f(Br, Bz, Bp);
+  }
+
+  VTKM_EXEC
+  bool IsRegion12(const vtkm::FloatDefault& R, const vtkm::FloatDefault& Z, const vtkm::FloatDefault& psi) const
+  {
+    constexpr vtkm::FloatDefault epsil_psi = 1e-5;
+
+    if ((psi <= (this->eq_x_psi-epsil_psi) && -(R-this->eq_x_r)*this->eq_x_slope + (Z-this->eq_x_z) > 0 &&
+         -(R-this->eq_x2_r)*this->eq_x2_slope + (Z-this->eq_x2_z) < 0) ||
+        (psi > this->eq_x_psi-epsil_psi && psi <= this->eq_x2_psi-epsil_psi &&
+         -(R-this->eq_x2_r)*this->eq_x2_slope + (Z-this->eq_x2_z) < 0) ||
+        psi >  this->eq_x2_psi-epsil_psi)
+    {
+      return true;
+    }
+
+    return false;
+
+    /*
+    if ((psi .le. eq_x_psi-epsil_psi .and. -(r-eq_x_r)*eq_x_slope + (z-eq_x_z) > 0D0 .and. &
+         -(r-eq_x2_r)*eq_x2_slope + (z-eq_x2_z) < 0D0) .or. &
+        (psi .gt. eq_x_psi-epsil_psi .and. psi .le. eq_x2_psi-epsil_psi .and. &
+         -(r-eq_x2_r)*eq_x2_slope + (z-eq_x2_z) < 0D0) .or. &
+        psi .gt. eq_x2_psi-epsil_psi)
+      is_rgn12=.true.
+    else
+       is_rgn12=.false.
+    */
+
+    /*
+    if ((psi <= (this->eq_x_psi-this->epsil_psi)) &&
+        (R-this->eq_x_r*this->eq_x_slope + Z-this->eq_x_z > 0) &&
+        (psi > this->eq_x_psi-this->epsil_psi && psi <= this->eq_x2_psi-epsil_psi && ) ||
+    */
   }
 
   VTKM_EXEC
@@ -238,7 +292,7 @@ public:
     vtkm::Matrix<vtkm::FloatDefault, 4, 4> acoeff;
     //offset = ri * nz + zi
     //vtkm::Id offset = (r_i * this->ncoeff + z_i) * 16; //DRP
-    vtkm::Id offset = (z_i * ncoeff + r_i) * 16;
+    vtkm::Id offset = (z_i * this->ncoeff_r + r_i) * 16;
 
 #if 0
     vtkm::Id idx = 0;
@@ -260,6 +314,9 @@ public:
 
     vtkm::FloatDefault psi, dpsi_dr, dpsi_dz, d2psi_d2r, d2psi_drdz, d2psi_d2z;
     this->EvalBicub2(R, Z, Rc, Zc, offset, Coeff_2D, psi,dpsi_dr,dpsi_dz,d2psi_drdz,d2psi_d2r,d2psi_d2z);
+    if (psi < 0)
+      psi = 0;
+
     pInfo.Psi = psi;
     //PSI = psi;
     pInfo.gradPsi_rzp[0] = dpsi_dr;
@@ -276,8 +333,19 @@ public:
     //gradPsi_rzp[1] = dpsi_dz;
     //gradPsi_rzp[2] = 0;
 
-    vtkm::FloatDefault fld_I = this->I_interpol(psi, 0, Coeff_1D);
-    vtkm::FloatDefault fld_dIdpsi = this->I_interpol(psi, 1, Coeff_1D);
+    vtkm::FloatDefault fld_I, fld_dIdpsi;
+
+    bool isR12 = this->IsRegion12(R,Z,psi);
+    if (!isR12)
+    {
+      fld_I = this->I_interpol(psi, 0, 3, Coeff_1D);
+      fld_dIdpsi = this->I_interpol(psi, 1, 3, Coeff_1D);
+    }
+    else
+    {
+      fld_I = this->I_interpol(psi, 0, 1, Coeff_1D);
+      fld_dIdpsi = this->I_interpol(psi, 1, 1, Coeff_1D);
+    }
 
     vtkm::FloatDefault over_r = 1/R;
     vtkm::FloatDefault over_r2 = over_r*over_r;
@@ -447,18 +515,34 @@ public:
         if (dPsi > epsPsi)
         {
           printf("%lld: Psi difference detected. Error= %16.15lf\n", i, dPsi);
-          printf("    Vals= %16.15lf %16.15lf\n", pInfo.Psi, Psi.Get(i));
+          printf("    Vals(vtkm/xgc)= %16.15lf %16.15lf\n", pInfo.Psi, Psi.Get(i));
+          printf("      RZ= %16.15lf %16.15lf\n", ptRZ[0], ptRZ[1]);
         }
         if (dB0 > epsB0)
         {
           printf("%lld: B0 difference detected. Error= %16.15lf\n", i, dB0);
-          printf("   Vals= (%16.15lf, %16.15lf, %16.15lf)\n", pInfo.B0_rzp[0], pInfo.B0_rzp[1], pInfo.B0_rzp[2]);
-          printf("   Vals= (%16.15lf, %16.15lf, %16.15lf)\n", B_RZP.Get(i)[0], B_RZP.Get(i)[1], B_RZP.Get(i)[2]);
+          printf("   Vals_vtkm= (%16.15lf, %16.15lf, %16.15lf)\n", pInfo.B0_rzp[0], pInfo.B0_rzp[1], pInfo.B0_rzp[2]);
+          printf("   Vals_xgc = (%16.15lf, %16.15lf, %16.15lf)\n", B_RZP.Get(i)[0], B_RZP.Get(i)[1], B_RZP.Get(i)[2]);
+          printf("     RZ= %16.15lf %16.15lf\n", ptRZ[0], ptRZ[1]);
         }
       }
 
       return;
     }
+
+    /*
+    this->DoStepSizeConvergence(locator, cellSet, coords,
+                                AsPhiFF, DAsPhiFF_RZP, Coeff_1D, Coeff_2D, B_RZP);
+    return;
+    */
+
+    /*
+    std::ofstream outPts;
+    outPts.open("vtkm.samples.txt", std::ofstream::out);
+    outPts<<"ID, R, Z, T"<<std::endl;
+    outPts<<idx<<", "<<std::setprecision(15)<<particle.Pos[0]<<", "<<particle.Pos[2]<<", "<<particle.Pos[1]<<std::endl;
+    */
+
 
     bool revDir = particle.ReverseDirection;
     while (true)
@@ -467,7 +551,6 @@ public:
       DBG("\n\n\n*********************************************"<<std::endl);
       DBG("   "<<particle.Pos<<" #s= "<<particle.NumSteps<<std::endl);
 
-
       if (!this->TakeRK4Step(particle.Pos, revDir, pInfo, locator, cellSet, coords,
                              AsPhiFF, DAsPhiFF_RZP, Coeff_1D, Coeff_2D, B_RZP, newPos))
       {
@@ -475,8 +558,15 @@ public:
       }
 
       DBG("     *** Step--> "<<newPos<<std::endl);
-      vtkm::Id numRevs0 = vtkm::Floor(vtkm::Abs(particle.Pos[1] / vtkm::TwoPi()));
-      vtkm::Id numRevs1 = vtkm::Floor(vtkm::Abs(newPos[1] / vtkm::TwoPi()));
+      /*
+      auto T = newPos[1];
+      while (T < 0)
+        T += this->Period;
+      outPts<<idx<<", "<<std::setprecision(15)<<newPos[0]<<", "<<newPos[2]<<", "<<T<<std::endl;
+      */
+
+      vtkm::Id numRevs0 = vtkm::Floor(vtkm::Abs(particle.Pos[1] / this->Period));
+      vtkm::Id numRevs1 = vtkm::Floor(vtkm::Abs(newPos[1] / this->Period));
 
       particle.Pos = newPos;
       particle.NumSteps++;
@@ -488,9 +578,9 @@ public:
       if (numRevs1 > numRevs0)
       {
         auto R = particle.Pos[0], Z = particle.Pos[2];
-        auto theta = vtkm::ATan2(Z-this->EqAxisZ, R-this->EqAxisR);
+        auto theta = vtkm::ATan2(Z-this->eq_axis_z, R-this->eq_axis_r);
         if (theta < 0)
-          theta += vtkm::TwoPi();
+          theta += this->Period;
 
         //calcualte psi. need to stash psi on the particle somehow....
         vtkm::Vec3f ptRPZ = particle.Pos;
@@ -511,7 +601,7 @@ public:
 
         vtkm::Id i = (idx * this->MaxPunc) + particle.NumPunctures;
         outputRZ.Set(i, vtkm::Vec2f(R, Z));
-        outputTP.Set(i, vtkm::Vec2f(theta, pInfo.Psi/this->EqXPsi));
+        outputTP.Set(i, vtkm::Vec2f(theta, pInfo.Psi/this->eq_x_psi));
         punctureID.Set(i, idx);
         particle.NumPunctures++;
 
@@ -538,6 +628,85 @@ public:
     CALLGRIND_TOGGLE_COLLECT;
     CALLGRIND_STOP_INSTRUMENTATION;
 #endif
+  }
+
+
+  VTKM_EXEC
+  void DoStepSizeConvergence(const LocatorType& locator,
+                             const CellSetType& cellSet,
+                             const WholeArrayInType<vtkm::Vec3f>& coords,
+                             const WholeArrayInType<vtkm::FloatDefault>& AsPhiFF,
+                             const WholeArrayInType<vtkm::Vec3f>& DAsPhiFF_RZP,
+                             const WholeArrayInType<vtkm::FloatDefault>& Coeff_1D,
+                             const WholeArrayInType<vtkm::FloatDefault>& Coeff_2D,
+                             const WholeArrayInType<vtkm::Vec3f>& B_RZP) const
+  {
+    //Do a convergence test....
+    vtkm::FloatDefault h0 = 1e-30, h1 = 10.0;
+
+    vtkm::Vec3f y, yNew;
+    //wedge=1, pt1
+    //y = vtkm::Vec3f(4.309580596305981, 6.183185307179587, 0.5649326145462003);
+    //yNew = vtkm::Vec3f(4.309668549717018, 6.181465927419890, 0.5634100834959720);
+    /*
+      h= (0.000915518 0.000915527) eps= (0.000134932 0.00013491)
+     */
+
+    //wedge=1, pt=n
+    //y = vtkm::Vec3f(4.461953344017232, 3.413912040468153, -0.6244527053612312);
+    //yNew = vtkm::Vec3f(4.462246933460231, 3.412247868274441, -0.6258687536624021);
+    /*
+      h= (0.000915518 0.000915527) eps= (0.000215321 0.0002153)
+     */
+
+    //wedge=2, pt1
+    y = vtkm::Vec3f(4.309580596305981, 6.183185307179587, 0.5649326145462003);
+    yNew = vtkm::Vec3f(4.309668549717018, 6.181465927419890, 0.5634100834959720);
+
+    /*
+        h= 0.0012207 eps= 0.00059159
+        h= (0.000915518 0.000915527) eps= (0.000131075 0.000131053)
+    */
+
+    //wedge=2, pt=n
+    //y = vtkm::Vec3f(4.492921698829425, 0.2592449878252452, -0.7602907826493768);
+    //yNew = vtkm::Vec3f(4.493063815990979, 0.2584182861372364, -0.7609916514492193);
+    /*
+      h= 0.0012207 eps= 0.00151367
+      h= (0.000457754 0.000457764) eps= (0.000115909 0.000115889)
+     */
+
+    vtkm::Vec3f tmp;
+    ParticleInfo pInfo;
+    this->TakeRK4Step2(y, h0, pInfo, locator, cellSet, coords,
+                       AsPhiFF, DAsPhiFF_RZP, Coeff_1D, Coeff_2D, B_RZP, tmp);
+    auto err0 = vtkm::Magnitude(yNew-tmp);
+    this->TakeRK4Step2(y, h1, pInfo, locator, cellSet, coords,
+                       AsPhiFF, DAsPhiFF_RZP, Coeff_1D, Coeff_2D, B_RZP, tmp);
+    auto err1 = vtkm::Magnitude(yNew-tmp);
+
+    std::cout<<"h= ("<<h0<<" "<<h1<<") eps= ("<<err0<<" "<<err1<<")"<<std::endl;
+    while (h1-h0 > 1e-8)
+    {
+      auto hMid = (h0+h1) / 2.0;
+
+      this->TakeRK4Step2(y, hMid, pInfo, locator, cellSet, coords,
+                         AsPhiFF, DAsPhiFF_RZP, Coeff_1D, Coeff_2D, B_RZP, tmp);
+
+      vtkm::FloatDefault errMid = vtkm::Magnitude(yNew-tmp);
+      std::cout<<"     h= "<<hMid<<" eps= "<<errMid<<std::endl;
+      if (errMid < err1)
+      {
+        err1 = errMid;
+        h1 = hMid;
+      }
+      else
+      {
+        err0 = errMid;
+        h0 = hMid;
+      }
+      std::cout<<"h= ("<<h0<<" "<<h1<<") eps= ("<<err0<<" "<<err1<<")"<<std::endl;
+    }
   }
 
   //template <typename LocatorType>
@@ -600,6 +769,59 @@ public:
   }
 
   VTKM_EXEC
+  bool TakeRK4Step2(const vtkm::Vec3f& ptRPZ,
+                    const vtkm::FloatDefault& h,
+                    ParticleInfo& pInfo,
+                    const LocatorType& locator,
+                    const CellSetType& cellSet,
+                    const WholeArrayInType<vtkm::Vec3f>& coords,
+                    const WholeArrayInType<vtkm::FloatDefault>& AsPhiFF,
+                    const WholeArrayInType<vtkm::Vec3f>& DAsPhiFF_RZP,
+                    const WholeArrayInType<vtkm::FloatDefault>& Coeff_1D,
+                    const WholeArrayInType<vtkm::FloatDefault>& Coeff_2D,
+                    const WholeArrayInType<vtkm::Vec3f>& B_RZP,
+                    vtkm::Vec3f& res) const
+  {
+    vtkm::Vec3f k1, k2, k3, k4;
+
+    //k1 = F(p)
+    //k2 = F(p+hk1/2)
+    //k3 = F(p+hk2/2)
+    //k4 = F(p+hk3)
+    //Yn+1 = Yn + 1/6 h (k1+2k2+2k3+k4)
+    vtkm::Vec3f p0 = ptRPZ, tmp = ptRPZ;
+
+    vtkm::FloatDefault h_2 = h/2.0;
+
+    DBG("    ****** K1"<<std::endl);
+    bool v1, v2, v3, v4;
+    v1 = this->Evaluate(tmp, pInfo, locator, cellSet, coords, AsPhiFF, DAsPhiFF_RZP, Coeff_1D, Coeff_2D, B_RZP, k1);
+    tmp = p0 + k1*h_2;
+
+    DBG("    ****** K2"<<std::endl);
+    v2 = this->Evaluate(tmp, pInfo, locator, cellSet, coords, AsPhiFF, DAsPhiFF_RZP, Coeff_1D, Coeff_2D, B_RZP, k2);
+    tmp = p0 + k2*h_2;
+
+    DBG("    ****** K3"<<std::endl);
+    v3 = this->Evaluate(tmp, pInfo, locator, cellSet, coords, AsPhiFF, DAsPhiFF_RZP, Coeff_1D, Coeff_2D, B_RZP, k3);
+    tmp = p0 + k3*h;
+
+    DBG("    ****** K4"<<std::endl);
+    v4 = this->Evaluate(tmp, pInfo, locator, cellSet, coords, AsPhiFF, DAsPhiFF_RZP, Coeff_1D, Coeff_2D, B_RZP, k4);
+
+    vtkm::Vec3f vec = (k1 + 2*k2 + 2*k3 + k4)/6.0;
+    res = p0 + h * vec;
+
+    if (!(v1&&v2&&v3&&v4))
+    {
+      //printf("RK4 step failed\n");
+      return false;
+    }
+
+    return true;
+  }
+
+  VTKM_EXEC
   vtkm::FloatDefault
   EvalS(const WholeArrayInType<vtkm::FloatDefault>& sPortal,
         const vtkm::Id& offset,
@@ -612,6 +834,12 @@ public:
     const auto& v0 = sPortal.Get(vId[0]+offset);
     const auto& v1 = sPortal.Get(vId[1]+offset);
     const auto& v2 = sPortal.Get(vId[2]+offset);
+
+    /*
+    std::cout<<"S    Idx_0 "<<vId[0]<<" --> "<<v0<<std::endl;
+    std::cout<<"S    Idx_1 "<<vId[1]<<" --> "<<v1<<std::endl;
+    std::cout<<"S    Idx_2 "<<vId[2]<<" --> "<<v2<<std::endl;
+    */
 
     const auto& w1 = param[0];
     const auto& w2 = param[1];
@@ -635,11 +863,18 @@ public:
         const vtkm::Vec<vtkm::Id, 3>& vId) const
   {
     vtkm::Vec3f v;
+
 #if 1
     //Hard code...
     const auto& v0 = vPortal.Get(vId[0]+offset);
     const auto& v1 = vPortal.Get(vId[1]+offset);
     const auto& v2 = vPortal.Get(vId[2]+offset);
+
+    /*
+    std::cout<<"V    Idx_0 "<<vId[0]<<" --> "<<v0<<std::endl;
+    std::cout<<"V    Idx_1 "<<vId[1]<<" --> "<<v1<<std::endl;
+    std::cout<<"V    Idx_2 "<<vId[2]<<" --> "<<v2<<std::endl;
+    */
 
     const auto& w1 = param[0];
     const auto& w2 = param[1];
@@ -967,11 +1202,11 @@ public:
     for (int j=0; j<4; j++)
     {
       for (int i=0; i<4; i++)
-        fx[j] = fx[j] + xv[i]*Coeff_2D.Get(offset + i*4 + j); //acoeff[i][j];
+        fx[j] = fx[j] + xv[i]*Coeff_2D.Get(offset + j*4 + i); //acoeff[i][j];
       for (int i=1; i<4; i++)
-        dfx[j] = dfx[j] + vtkm::FloatDefault(i)*xv[i-1]*Coeff_2D.Get(offset + i*4 + j); //acoeff[i][j];
+        dfx[j] = dfx[j] + vtkm::FloatDefault(i)*xv[i-1]*Coeff_2D.Get(offset + j*4 + i); //acoeff[i][j];
       for (int i=2; i<4; i++)
-        dfx2[j] = dfx2[j] + vtkm::FloatDefault(i*(i-1))*xv[i-2]*Coeff_2D.Get(offset + i*4 + j); //acoeff[i][j];
+        dfx2[j] = dfx2[j] + vtkm::FloatDefault(i*(i-1))*xv[i-2]*Coeff_2D.Get(offset + j*4 + i); //acoeff[i][j];
     }
 
     for (int j = 0; j < 4; j++)
@@ -1049,11 +1284,6 @@ public:
       f02 = f02 + fx[j]*dfy2[j];
     }
 
-
-
-
-
-
     //c++ code.
     /*
     double fx_i, dfx_i, dfx2_i;
@@ -1117,13 +1347,28 @@ public:
 #endif
 
   VTKM_EXEC
-  vtkm::FloatDefault I_interpol(const vtkm::FloatDefault& psi,
+  vtkm::FloatDefault I_interpol(const vtkm::FloatDefault& in_psi,
                                 const int& ideriv,
+                                const int& region,
                                 const WholeArrayInType<vtkm::FloatDefault>& coeff_1D) const
   {
+
+    vtkm::FloatDefault psi;
+    if (region == 3)
+    {
+      psi = vtkm::Min(this->eq_x_psi, this->itp_max_psi);
+      if (ideriv != 0)
+        return 0.0;
+    }
+    else
+    {
+      psi = vtkm::Min(in_psi, this->itp_max_psi);
+      psi = vtkm::Max(psi, this->itp_min_psi);
+    }
+
     vtkm::FloatDefault pn = psi * this->one_d_cub_dpsi_inv;
     int ip=floor(pn);
-    ip=std::min(std::max(ip,0),this->ncoeff-1);
+    ip=std::min(std::max(ip,0),this->ncoeff_psi-1);
     vtkm::FloatDefault wp=pn-(vtkm::FloatDefault)(ip);
 
     int idx = ip*4;
@@ -1269,7 +1514,7 @@ public:
     vtkm::Id planeIdx0, planeIdx1, numRevs;
     vtkm::FloatDefault phiN, Phi0, Phi1, T;
     this->GetPlaneIdx(Phi, phiN, planeIdx0, planeIdx1, Phi0, Phi1, numRevs, T);
-    //std::cout<<"Phi= "<<Phi<<" "<<(Phi/vtkm::TwoPi())<<" planes= "<<planeIdx0<<" "<<planeIdx1<<std::endl;
+    //std::cout<<"Phi= "<<Phi<<" "<<(Phi/this->Period)<<" planes= "<<planeIdx0<<" "<<planeIdx1<<std::endl;
 
     vtkm::Vec3f B0_rpz(pInfo.B0_rzp[0], pInfo.B0_rzp[2], pInfo.B0_rzp[1]);
     vtkm::Vec3f ff_pt_rpz;
@@ -1319,6 +1564,9 @@ public:
     if (!this->PtLoc(x_ff_rzp, pInfo, locator, cellSet, coords, x_ff_param, x_ff_vids))
       return false;
 
+    //std::cout<<" *** Indexing: "<<planeIdx0<<" offsets: = "<<offsets[0]<<" "<<offsets[1]<<" vids= "<<x_ff_vids<<std::endl;
+
+
     //this->PtLoc2(x_ff_rzp, pInfo, locator, cellSet, coords, x_ff_param, x_ff_vids);
     auto dAs_ff0_rzp = this->EvalV(DAsPhiFF_RZP, offsets[0], x_ff_param, x_ff_vids);
     auto dAs_ff1_rzp = this->EvalV(DAsPhiFF_RZP, offsets[1], x_ff_param, x_ff_vids);
@@ -1351,6 +1599,12 @@ public:
     auto As_ff0 = this->EvalS(AsPhiFF, offsets[0], x_ff_vids, x_ff_param);
     auto As_ff1 = this->EvalS(AsPhiFF, offsets[1], x_ff_vids, x_ff_param);
 
+    //Let's do a constant value
+    vtkm::Id IDX = 30*this->NumNodes*2 + 491429;
+    auto S0 = AsPhiFF.Get(IDX);
+    auto V0 = DAsPhiFF_RZP.Get(IDX);
+    std::cout<<"Constant values= "<<S0<<" "<<V0<<std::endl;
+
     vtkm::FloatDefault As = wphi[0]*As_ff0 + wphi[1]*As_ff1;
     auto AsCurl_bhat_rzp = As * pInfo.curl_nb_rzp;
 
@@ -1380,15 +1634,15 @@ public:
               vtkm::Id& numRevs,
               vtkm::FloatDefault& T) const
   {
-    numRevs = vtkm::Floor(vtkm::Abs(phi / vtkm::TwoPi()));
+    numRevs = vtkm::Floor(vtkm::Abs(phi / this->Period));
     phiN = phi;
     if (phi < 0)
     {
-      phiN += ((1+numRevs) * vtkm::TwoPi());
+      phiN += ((1+numRevs) * this->Period);
     }
-    else if (phi > vtkm::TwoPi())
+    else if (phi > this->Period)
     {
-      phiN -= (numRevs * vtkm::TwoPi());
+      phiN -= (numRevs * this->Period);
     }
 
     plane0 = vtkm::Floor(phiN / this->dPhi);
@@ -1407,6 +1661,7 @@ public:
   vtkm::Id MaxIter = 0;
   vtkm::Id MaxPunc = 0;
   vtkm::FloatDefault PlaneVal = 0.0f;
+  vtkm::FloatDefault Period;
   vtkm::FloatDefault StepSize;
   vtkm::FloatDefault StepSize_2;
   vtkm::FloatDefault StepSize_6;
@@ -1422,10 +1677,13 @@ public:
   int nr, nz;
   vtkm::FloatDefault rmin, zmin, rmax, zmax;
   vtkm::FloatDefault dr, dz, dr_inv, dz_inv;
-  vtkm::FloatDefault EqAxisZ, EqAxisR, EqXPsi;
+  vtkm::FloatDefault eq_axis_z, eq_axis_r, eq_axis_psi;
+  vtkm::FloatDefault eq_x_r, eq_x_z, eq_x_psi, eq_x2_z, eq_x2_r, eq_x2_psi;
+  vtkm::FloatDefault eq_x_slope, eq_x2_slope;
 
-  int ncoeff;
+  int ncoeff_r, ncoeff_z, ncoeff_psi;
   vtkm::FloatDefault min_psi, max_psi;
+  vtkm::FloatDefault itp_min_psi, itp_max_psi;
   vtkm::FloatDefault one_d_cub_dpsi_inv;
   vtkm::FloatDefault sml_bp_sign = -1.0f;
 

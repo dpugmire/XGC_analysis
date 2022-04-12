@@ -22,6 +22,9 @@ struct XGCParameters
   double eq_min_z = -1, eq_max_z = 1;
   double psi_min = -1, psi_max = -1;
   int eq_mr = -1, eq_mz = -1;
+  int eq_mpsi = -1;
+  int sml_wedge_n = -1;
+  double itp_min_psi=-1, itp_max_psi=-1;
 };
 
 #endif

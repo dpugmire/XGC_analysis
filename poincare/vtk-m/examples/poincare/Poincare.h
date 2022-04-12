@@ -150,7 +150,7 @@ public:
     this->ncoeff = eq_mr-1; //150;
     this->min_psi = psi_min; //0.0;
     this->max_psi = psi_max; //0.0697345;
-    //this->one_d_cub_dpsi_inv = 1.0/.0004649;
+
     this->one_d_cub_dpsi_inv = 1.0 / ((max_psi-min_psi)/vtkm::FloatDefault(this->ncoeff));
     #ifndef VTKM_CUDA
     std::cout<<"PSI min/max= "<<psi_min<<" "<<psi_max<<std::endl;
