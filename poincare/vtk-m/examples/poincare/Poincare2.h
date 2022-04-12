@@ -1599,11 +1599,13 @@ public:
     auto As_ff0 = this->EvalS(AsPhiFF, offsets[0], x_ff_vids, x_ff_param);
     auto As_ff1 = this->EvalS(AsPhiFF, offsets[1], x_ff_vids, x_ff_param);
 
+    /*
     //Let's do a constant value
     vtkm::Id IDX = 30*this->NumNodes*2 + 491429;
     auto S0 = AsPhiFF.Get(IDX);
     auto V0 = DAsPhiFF_RZP.Get(IDX);
     std::cout<<"Constant values= "<<S0<<" "<<V0<<std::endl;
+    */
 
     vtkm::FloatDefault As = wphi[0]*As_ff0 + wphi[1]*As_ff1;
     auto AsCurl_bhat_rzp = As * pInfo.curl_nb_rzp;
