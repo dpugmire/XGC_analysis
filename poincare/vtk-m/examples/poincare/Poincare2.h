@@ -106,10 +106,12 @@ public:
                                 WholeArrayIn B_RZP,
                                 WholeArrayIn Psi,
                                 WholeArrayInOut traces,
-                                WholeArrayInOut outputRZ,
-                                WholeArrayInOut outputTP,
+                                WholeArrayInOut outputR,
+                                WholeArrayInOut outputZ,
+                                WholeArrayInOut outputTheta,
+                                WholeArrayInOut outputPsi,
                                 WholeArrayInOut punctureID);
-  using ExecutionSignature = void(InputIndex, _1, _2, _3, _4, _5, _6, _7, _8, _9, _10, _11, _12, _13, _14);
+  using ExecutionSignature = void(InputIndex, _1, _2, _3, _4, _5, _6, _7, _8, _9, _10, _11, _12, _13, _14, _15, _16);
   using InputDomain = _1;
 
   PoincareWorklet2(vtkm::Id maxPunc,
@@ -484,8 +486,10 @@ public:
                             const WholeArrayInType<vtkm::Vec3f>& B_RZP,
                             const WholeArrayInType<vtkm::FloatDefault>& Psi,
                             WholeArrayType<vtkm::Vec3f>& traces,
-                            WholeArrayType<vtkm::Vec2f>& outputRZ,
-                            WholeArrayType<vtkm::Vec2f>& outputTP,
+                            WholeArrayType<vtkm::FloatDefault>& outputR,
+                            WholeArrayType<vtkm::FloatDefault>& outputZ,
+                            WholeArrayType<vtkm::FloatDefault>& outputTheta,
+                            WholeArrayType<vtkm::FloatDefault>& outputPsi,
                             WholeArrayType<vtkm::Id> punctureID) const
   {
 #ifdef VALGRIND
@@ -544,14 +548,13 @@ public:
     */
 
 
-    bool revDir = particle.ReverseDirection;
     while (true)
     {
       vtkm::Vec3f newPos;
       DBG("\n\n\n*********************************************"<<std::endl);
       DBG("   "<<particle.Pos<<" #s= "<<particle.NumSteps<<std::endl);
 
-      if (!this->TakeRK4Step(particle.Pos, revDir, pInfo, locator, cellSet, coords,
+      if (!this->TakeRK4Step(particle.Pos, pInfo, locator, cellSet, coords,
                              AsPhiFF, DAsPhiFF_RZP, Coeff_1D, Coeff_2D, B_RZP, newPos))
       {
         break;
@@ -600,8 +603,10 @@ public:
         }
 
         vtkm::Id i = (idx * this->MaxPunc) + particle.NumPunctures;
-        outputRZ.Set(i, vtkm::Vec2f(R, Z));
-        outputTP.Set(i, vtkm::Vec2f(theta, pInfo.Psi/this->eq_x_psi));
+        outputR.Set(i, R);
+        outputZ.Set(i, Z);
+        outputTheta.Set(i, theta);
+        outputPsi.Set(i, pInfo.Psi/this->eq_x_psi);
         punctureID.Set(i, idx);
         particle.NumPunctures++;
 
@@ -712,7 +717,6 @@ public:
   //template <typename LocatorType>
   VTKM_EXEC
   bool TakeRK4Step(const vtkm::Vec3f& ptRPZ,
-                   bool revDir,
                    ParticleInfo& pInfo,
                    const LocatorType& locator,
                    const CellSetType& cellSet,
@@ -734,11 +738,6 @@ public:
     vtkm::Vec3f p0 = ptRPZ, tmp = ptRPZ;
 
     vtkm::FloatDefault h = this->StepSize, h_2 = this->StepSize_2;
-    if (revDir)
-    {
-      h = -h;
-      h_2 = -h_2;
-    }
 
     DBG("    ****** K1"<<std::endl);
     bool v1, v2, v3, v4;

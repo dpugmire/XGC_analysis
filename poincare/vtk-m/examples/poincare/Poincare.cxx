@@ -8,12 +8,6 @@
 //  PURPOSE.  See the above copyright notice for more information.
 //============================================================================
 
-#if 0
-TODO:
-psi = max(0, psi);
-
-#endif
-
 #include <typeinfo>
 #include <iomanip>
 #include <vtkm/cont/Initialize.h>
@@ -662,8 +656,10 @@ void WriteHeader(const std::string& fname, const std::string& header)
 void
 SaveOutput(std::map<std::string, std::vector<std::string>>& args,
            const std::vector<std::vector<vtkm::Vec3f>>& traces,
-           const vtkm::cont::ArrayHandle<vtkm::Vec2f>& outRZ,
-           const vtkm::cont::ArrayHandle<vtkm::Vec2f>& outTP,
+           const vtkm::cont::ArrayHandle<vtkm::FloatDefault>& outR,
+           const vtkm::cont::ArrayHandle<vtkm::FloatDefault>& outZ,
+           const vtkm::cont::ArrayHandle<vtkm::FloatDefault>& outTheta,
+           const vtkm::cont::ArrayHandle<vtkm::FloatDefault>& outPsi,
            const vtkm::cont::ArrayHandle<vtkm::Id>& outID,
            const std::string& outFileName = "",
            int timeStep=0)
@@ -734,32 +730,39 @@ SaveOutput(std::map<std::string, std::vector<std::string>>& args,
 
   adiosS* outputStuff = adiosStuff["output"];
 
-  std::size_t nPts = static_cast<std::size_t>(outRZ.GetNumberOfValues());
+  std::size_t nPts = static_cast<std::size_t>(outR.GetNumberOfValues());
 
   //create a (R,Z,ID) and (Theta, Psi, ID) arrays.
-  auto RZBuff = vtkm::cont::ArrayHandleBasic<vtkm::Vec2f>(outRZ).GetReadPointer();
-  auto TPBuff = vtkm::cont::ArrayHandleBasic<vtkm::Vec2f>(outTP).GetReadPointer();
+  auto RBuff = vtkm::cont::ArrayHandleBasic<vtkm::FloatDefault>(outR).GetReadPointer();
+  auto ZBuff = vtkm::cont::ArrayHandleBasic<vtkm::FloatDefault>(outZ).GetReadPointer();
+  auto TBuff = vtkm::cont::ArrayHandleBasic<vtkm::FloatDefault>(outTheta).GetReadPointer();
+  auto PBuff = vtkm::cont::ArrayHandleBasic<vtkm::FloatDefault>(outPsi).GetReadPointer();
   auto IDBuff = vtkm::cont::ArrayHandleBasic<vtkm::Id>(outID).GetReadPointer();
 
   if (firstTime)
   {
     outputStuff->io.DefineAttribute<std::string>("Arguments", argString);
-    std::vector<std::size_t> shape = {nPts*2}, offset = {0}, size = {nPts*2};
-    outputStuff->io.DefineVariable<vtkm::FloatDefault>("RZ", shape, offset, size);
-    outputStuff->io.DefineVariable<vtkm::FloatDefault>("ThetaPsi", shape, offset, size);
+    std::vector<std::size_t> shape = {nPts}, offset = {0}, size = {nPts};
+    outputStuff->io.DefineVariable<vtkm::FloatDefault>("R", shape, offset, size);
+    outputStuff->io.DefineVariable<vtkm::FloatDefault>("Z", shape, offset, size);
+    outputStuff->io.DefineVariable<vtkm::FloatDefault>("Theta", shape, offset, size);
+    outputStuff->io.DefineVariable<vtkm::FloatDefault>("Psi", shape, offset, size);
     outputStuff->io.DefineVariable<int>("TimeStep", {1}, {0}, {1});
 
-    std::vector<std::size_t> shape2 = {nPts}, size2 = {nPts};
-    outputStuff->io.DefineVariable<vtkm::Id>("ID", shape2, offset, size2);
+    outputStuff->io.DefineVariable<vtkm::Id>("ID", shape, offset, size);
   }
-  auto vRZ = outputStuff->io.InquireVariable<vtkm::FloatDefault>("RZ");
-  auto vTP = outputStuff->io.InquireVariable<vtkm::FloatDefault>("ThetaPsi");
+  auto vR = outputStuff->io.InquireVariable<vtkm::FloatDefault>("R");
+  auto vZ = outputStuff->io.InquireVariable<vtkm::FloatDefault>("Z");
+  auto vT = outputStuff->io.InquireVariable<vtkm::FloatDefault>("Theta");
+  auto vP = outputStuff->io.InquireVariable<vtkm::FloatDefault>("Psi");
   auto vID = outputStuff->io.InquireVariable<vtkm::Id>("ID");
   auto vTS = outputStuff->io.InquireVariable<int>("TimeStep");
 
   outputStuff->engine.BeginStep();
-  outputStuff->engine.Put<vtkm::FloatDefault>(vRZ, &(RZBuff[0][0]));
-  outputStuff->engine.Put<vtkm::FloatDefault>(vTP, &(TPBuff[0][0]));
+  outputStuff->engine.Put<vtkm::FloatDefault>(vR, &(RBuff[0]));
+  outputStuff->engine.Put<vtkm::FloatDefault>(vZ, &(ZBuff[0]));
+  outputStuff->engine.Put<vtkm::FloatDefault>(vT, &(TBuff[0]));
+  outputStuff->engine.Put<vtkm::FloatDefault>(vP, &(PBuff[0]));
   outputStuff->engine.Put<vtkm::Id>(vID, IDBuff);
   outputStuff->engine.Put<int>(vTS, &timeStep);
   outputStuff->engine.EndStep();
@@ -784,14 +787,16 @@ Poincare(const vtkm::cont::DataSet& ds,
   ds.GetField("B_RZP").GetData().AsArrayHandle(B_rzp);
 
   vtkm::cont::ArrayHandle<vtkm::Vec3f> tracesArr;
-  vtkm::cont::ArrayHandle<vtkm::Vec2f> outRZ, outTP;
+  vtkm::cont::ArrayHandle<vtkm::FloatDefault> outR, outZ, outTheta, outPsi;
   vtkm::cont::ArrayHandle<vtkm::Id> outID;
   vtkm::Id nSeeds = seeds.GetNumberOfValues();
 
   vtkm::Id numPunc = std::atoi(args["--numPunc"][0].c_str());
   vtkm::cont::ArrayHandleConstant<vtkm::Id> initIds(-1, numPunc*nSeeds);
-  outRZ.Allocate(numPunc*nSeeds);
-  outTP.Allocate(numPunc*nSeeds);
+  outR.Allocate(numPunc*nSeeds);
+  outZ.Allocate(numPunc*nSeeds);
+  outTheta.Allocate(numPunc*nSeeds);
+  outPsi.Allocate(numPunc*nSeeds);
   outID.Allocate(numPunc*nSeeds);
   vtkm::cont::ArrayCopy(initIds, outID);
 
@@ -799,15 +804,15 @@ Poincare(const vtkm::cont::DataSet& ds,
   RunPoincare2(ds, seeds, xgcParams, args,
                As_ff, dAs_ff_rzp, coeff_1D, coeff_2D,
                B_rzp, psi,
-               tracesArr, outRZ, outTP, outID);
+               tracesArr, outR, outZ, outTheta, outPsi, outID);
   auto end = std::chrono::steady_clock::now();
 
   std::chrono::duration<double> elapsed_seconds = end-start;
 
   std::cout<<"PoincareTime= "<<elapsed_seconds.count()<<std::endl;
   //std::cout<<"vtkm::cont::Timer= "<<timer.GetElapsedTime()<<std::endl;
-  std::cout<<"outputRZ.size()= "<<outRZ.GetNumberOfValues()<<std::endl;
-  std::cout<<"outputTP.size()= "<<outTP.GetNumberOfValues()<<std::endl;
+  std::cout<<"outputR.size()= "<<outR.GetNumberOfValues()<<std::endl;
+  std::cout<<"outputTheta.size()= "<<outTheta.GetNumberOfValues()<<std::endl;
   std::cout<<"punctureID.size()= "<<outID.GetNumberOfValues()<<std::endl;
 
   //Save output
@@ -830,7 +835,7 @@ Poincare(const vtkm::cont::DataSet& ds,
   }
 
   std::string outFileName = args["--output"][0];
-  SaveOutput(args, traces, outRZ, outTP, outID, outFileName, timeStep);
+  SaveOutput(args, traces, outR, outZ, outTheta, outPsi, outID, outFileName, timeStep);
 }
 
 vtkm::cont::ArrayHandle<vtkm::FloatDefault>
@@ -1180,8 +1185,12 @@ ReadDataSet(std::map<std::string, std::vector<std::string>>& args, XGCParameters
     std::map<std::string, std::string> adiosArgs;
     adiosArgs["--dir"] = args["--dir"][0];
 
+    std::string xgc3DFile = "xgc.3d.bp";
+    if (args.find("--3DFile") != args.end())
+      xgc3DFile = args["--3DFile"][0];
+
     ds = ReadStaticData(args, xgcParams, "xgc.poincare_init.bp");
-    adiosStuff["data"] = new adiosS(adios, "xgc.3d.bp", "3d", adiosArgs);
+    adiosStuff["data"] = new adiosS(adios, xgc3DFile, "3d", adiosArgs);
 
     auto dataStuff = adiosStuff["data"];
     dataStuff->engine.BeginStep();
@@ -1443,7 +1452,7 @@ InterpolatePsi(const vtkm::Vec2f& ptRZ,
 }
 
 std::vector<vtkm::Particle>
-GeneratePsiRangeSeeds(std::map<std::string, std::vector<std::string>>& args,
+GenerateThetaPsiSeeds(std::map<std::string, std::vector<std::string>>& args,
                       const vtkm::cont::DataSet& ds,
                       XGCParameters& xgcParams)
 
@@ -1451,36 +1460,65 @@ GeneratePsiRangeSeeds(std::map<std::string, std::vector<std::string>>& args,
   std::vector<vtkm::Particle> seeds;
 
   std::vector<std::string> vals;
-  std::vector<vtkm::FloatDefault> thetas;
+  std::vector<vtkm::FloatDefault> thetaVals, psiVals;
+  const vtkm::FloatDefault degToRad = vtkm::Pi()/180.0;
 
   if (args.find("--psiRange") != args.end())
   {
     vals = args["--psiRange"];
-    int numTheta = std::atoi(vals[3].c_str());
-    std::vector<vtkm::FloatDefault> t;
-    vtkm::FloatDefault dTheta = vtkm::TwoPi() / static_cast<vtkm::FloatDefault>(numTheta);
+    vtkm::FloatDefault psiNorm0 = std::atof(vals[0].c_str());
+    vtkm::FloatDefault psiNorm1 = std::atof(vals[1].c_str());
+    int numPts = std::atoi(vals[2].c_str());
 
-    for (int i = 0; i < numTheta; i++)
-      thetas.push_back(static_cast<vtkm::FloatDefault>(i) * dTheta);
+    auto psiMin = psiNorm0 * xgcParams.eq_x_psi, psiMax = psiNorm1 * xgcParams.eq_x_psi;
+    auto dPsi = (psiMax-psiMin) / static_cast<vtkm::FloatDefault>(numPts-1);
+
+    auto psi = psiMin;
+    for (int i = 0; i < numPts; i++, psi += dPsi)
+      psiVals.push_back(psi);
   }
-  else
+  else if (args.find("--psiVals") != args.end())
   {
-    vals = args["--psiThetaRange"];
+    vals = args["--psiVals"];
+    for (const auto& v: vals)
+      psiVals.push_back(std::atof(v.c_str()) * xgcParams.eq_x_psi);
+  }
 
-    const vtkm::FloatDefault degToRad = vtkm::Pi()/180.0;
-    for (std::size_t i = 3; i < vals.size(); i++)
+  if (args.find("--thetaRange") != args.end())
+  {
+    vals = args["--thetaRange"];
+    vtkm::FloatDefault theta0 = 0, theta1 = 360, dTheta;
+    int numThetas = -1;
+    if (vals.size() == 1)
     {
-      vtkm::FloatDefault deg = std::atof(vals[i].c_str());
-      thetas.push_back(deg * degToRad);
+      numThetas = std::atoi(vals[0].c_str());
+      dTheta = (theta1-theta0) / static_cast<vtkm::FloatDefault>(numThetas);
+    }
+    else
+    {
+      theta0 = std::atof(vals[0].c_str());
+      theta1 = std::atof(vals[1].c_str());
+      numThetas = std::atoi(vals[2].c_str());
+      dTheta = (theta1-theta0) / static_cast<vtkm::FloatDefault>(numThetas-1);
+    }
+
+
+    auto theta = theta0;
+    for (int i = 0; i < numThetas; i++, theta += dTheta)
+    {
+      thetaVals.push_back(theta*degToRad);
+      std::cout<<"Theta_i= "<<theta<<std::endl;
     }
   }
-
-  vtkm::FloatDefault psiNorm0 = std::atof(vals[0].c_str());
-  vtkm::FloatDefault psiNorm1 = std::atof(vals[1].c_str());
-  int numPts = std::atoi(vals[2].c_str());
+  else if (args.find("--thetaVals") != args.end())
+  {
+    vals = args["--thetaVals"];
+    for (const auto& v: vals)
+      thetaVals.push_back(std::atof(v.c_str()) * degToRad);
+  }
 
   vtkm::cont::ArrayHandle<vtkm::FloatDefault> maxR;
-  FindMaxR(ds, xgcParams, thetas, maxR);
+  FindMaxR(ds, xgcParams, thetaVals, maxR);
 
   vtkm::cont::ArrayHandle<vtkm::FloatDefault> arr;
   ds.GetField("coeff_2D").GetData().AsArrayHandle(arr);
@@ -1493,25 +1531,18 @@ GeneratePsiRangeSeeds(std::map<std::string, std::vector<std::string>>& args,
   vtkm::Vec2f drz((xgcParams.eq_max_r-xgcParams.eq_min_r)/static_cast<vtkm::FloatDefault>(xgcParams.eq_mr-1),
                   (xgcParams.eq_max_z-xgcParams.eq_min_z)/static_cast<vtkm::FloatDefault>(xgcParams.eq_mz-1));
 
-  auto psiMin = psiNorm0 * xgcParams.eq_x_psi, psiMax = psiNorm1 * xgcParams.eq_x_psi;
-  auto dPsi = (psiMax-psiMin) / static_cast<vtkm::FloatDefault>(numPts-1);
-
   const vtkm::FloatDefault dR = 0.005;
-  vtkm::Id numThetas = static_cast<vtkm::Id>(thetas.size());
-  bool bothDirections = false;
-  if (args.find("--bothDirections") != args.end())
-    bothDirections = true;
 
-  for (std::size_t i = 0; i < thetas.size(); i++)
+  vtkm::Id ID = 0;
+  for (std::size_t i = 0; i < thetaVals.size(); i++)
   {
-    auto theta = thetas[i];
+    auto theta = thetaVals[i];
     auto cost = vtkm::Cos(theta), sint = vtkm::Sin(theta);
 
     //std::cout<<"Theta_"<<i<<" = "<<theta<<" psiN: "<<psiNorm0<<" "<<psiNorm1<<std::endl;
 
-    auto psiTarget = psiMin;
     vtkm::FloatDefault r0 = 0;
-    for (int j = 0; j < numPts; j++)
+    for (const auto& psiTarget : psiVals)
     {
       vtkm::FloatDefault r1 = r0;
       vtkm::FloatDefault psi = 0;
@@ -1566,25 +1597,13 @@ GeneratePsiRangeSeeds(std::map<std::string, std::vector<std::string>>& args,
       //std::cout<<std::setprecision(15)<<" diff= "<<diffPsi/xgcParams.eq_x_psi<<std::endl;
       //std::cout<<"CNT= "<<cnt<<std::setprecision(15)<<" dPsi= "<<dPsi<<std::endl;
 
-      vtkm::Id ID = j*numThetas + i;
-      if (bothDirections)
-        ID = 2*(j*numThetas + i);
-
       //std::cout<<i<<" "<<j<<" ID: "<<ID<<" PT= "<<(psi/xgcParams.eq_x_psi)<<" "<<theta<<std::endl;
       vtkm::Vec3f pt_rpz(R, 0, Z);
-      vtkm::Particle p({pt_rpz, ID});
+      vtkm::Particle p({pt_rpz, ID++});
       seeds.push_back(p);
-
-      if (bothDirections)
-      {
-        vtkm::Particle p2({pt_rpz, ID+1});
-        p2.ReverseDirection = true;
-        seeds.push_back(p2);
-      }
-
-      psiTarget += dPsi;
     }
   }
+
   return seeds;
 }
 
@@ -1611,9 +1630,11 @@ GenerateSeeds(const vtkm::cont::DataSet& ds,
     //std::cout<<"SEEDS= "<<seeds<<std::endl;
   }
   else if (args.find("--psiRange") != args.end() ||
-           args.find("--psiThetaRange") != args.end())
+           args.find("--thetaRange") != args.end() ||
+           args.find("--psiVals") != args.end() ||
+           args.find("--thetaVals") != args.end())
   {
-    seeds = GeneratePsiRangeSeeds(args, ds, xgcParams);
+    seeds = GenerateThetaPsiSeeds(args, ds, xgcParams);
   }
   else if (args.find("--seed") != args.end())
   {
@@ -1705,10 +1726,6 @@ GenerateSeeds(const vtkm::cont::DataSet& ds,
     engine.Get(v, tmp, adios2::Mode::Sync);
     engine.Close();
 
-    bool bothDirections = false;
-    if (args.find("--bothDirections") != args.end())
-      bothDirections = true;
-
     int n = tmp.size();
     int id = 0;
     for (int i = 0; i < n; i += (9*skip))
@@ -1718,15 +1735,7 @@ GenerateSeeds(const vtkm::cont::DataSet& ds,
 
       vtkm::Particle p(vtkm::Vec3f(R, 0.0, Z), id++);
       seeds.push_back(p);
-
-      if (bothDirections)
-      {
-        vtkm::Particle p2(vtkm::Vec3f(R, 0.0, Z), id++);
-        p2.ReverseDirection = true;
-        seeds.push_back(p2);
-      }
     }
-
   }
   else if (args.find("--parse") != args.end())
   {
@@ -2004,6 +2013,9 @@ i=7300 : 4.866152226365543 -2.042357129245992
 /*
 psi theta range:
 
+./examples/poincare/Poincare --dir ../data/summitRunJong-v3 --openmp --output OUT --numPunc 500 --stepSize 0.01 --dumpSeeds --psiThetaRange .95 .99 50 260 262 265 267 270 272 275 277 280 285 290 300 310 320 330 340 350  240 245 250 45 90 135 180
 
+
+Need to save out seed-psi0 for each particle.
 
  */

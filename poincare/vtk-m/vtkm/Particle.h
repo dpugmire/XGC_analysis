@@ -159,7 +159,6 @@ public:
   vtkm::Id NumRevolutions = 0; //Needs to go into a derived class.
   vtkm::Id NumSteps = 0;
   vtkm::FloatDefault Psi = 0.0;
-  bool ReverseDirection = false; //Needs to go into a derived class.
   vtkm::ParticleStatus Status;
   vtkm::FloatDefault Time = 0;
 };

@@ -10,19 +10,20 @@ if len(sys.argv) != 4 :
 inFile = sys.argv[1]
 out = sys.argv[2]
 particle_skip = int(sys.argv[3])
+MAXPUNC = 5000
 
 outRZ = out + '.txt'
 outTP = out + '.TP.txt'
 
 f=adios2.open(inFile, 'r')
-ID=f.read('ID')
 
-def ParseArrays(data, ids, skip, maxPunc) :
+def ParseArrays(ids, x, y, psi, skip, maxPunc) :
     out = []
 
     id0 = -1
     pCnt = 0
-    n = int(len(data) / 2)
+    n = int(len(x))
+    psi0 = -1
     for i in range(0, n, skip) :
         id = ids[i]
         if id < 0 : continue
@@ -32,26 +33,32 @@ def ParseArrays(data, ids, skip, maxPunc) :
         else :
             id0 = id
             pCnt = 0
+            psi0 = psi[i]
+
+        p = psi[i]
         if pCnt < maxPunc :
-            out.append( (id, data[i*2+0], data[i*2+1], pCnt) )
+            out.append((id, x[i], y[i], p, psi0, pCnt))
 
     return out
 
 
-print('Reading RZ.')
-rz=f.read('RZ')
+ID=f.read('ID')
 
-pRZ = ParseArrays(rz, ID, particle_skip, 1000)
+print('Reading RZ.')
+r=f.read('R')
+z=f.read('Z')
+print('Reading TP.')
+t=f.read('Theta')
+p=f.read('Psi')
+
+pRZ = ParseArrays(ID, r, z, p, particle_skip, MAXPUNC)
 print('saving ', outRZ)
-np.savetxt(outRZ, pRZ, delimiter=",", fmt='%d, %lf, %lf, %d', header='ID, R, Z, PUNC', comments='')
+np.savetxt(outRZ, pRZ, delimiter=",", fmt='%d, %lf, %lf, %lf, %lf, %d', header='ID, R, Z, PSI, PSI0, PUNC', comments='')
 print('Done.')
 pRZ = []
 
-print('Reading TP.')
-tp=f.read('ThetaPsi')
-
-pTP = ParseArrays(tp, ID, particle_skip, 1000)
+pTP = ParseArrays(ID, t, p, p, particle_skip, MAXPUNC)
 print('saving ', outTP)
-np.savetxt(outTP, pTP, delimiter=",", fmt='%d, %lf, %lf, %d', header='ID, THETA, PSI, PUNC', comments='')
+np.savetxt(outTP, pTP, delimiter=",", fmt='%d, %lf, %lf, %lf, %lf, %d', header='ID, THETA, PSI, PSI, PSI0, PUNC', comments='')
 print('Done.')
 pTP = []

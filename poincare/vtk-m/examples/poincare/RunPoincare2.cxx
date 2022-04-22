@@ -18,8 +18,10 @@ RunPoincare2(const vtkm::cont::DataSet& ds,
              const vtkm::cont::ArrayHandle<vtkm::Vec3f>& B_RZP,
              const vtkm::cont::ArrayHandle<vtkm::FloatDefault>& psi,
              vtkm::cont::ArrayHandle<vtkm::Vec3f>& tracesArr,
-             vtkm::cont::ArrayHandle<vtkm::Vec2f>& outRZ,
-             vtkm::cont::ArrayHandle<vtkm::Vec2f>& outTP,
+             vtkm::cont::ArrayHandle<vtkm::FloatDefault>& outR,
+             vtkm::cont::ArrayHandle<vtkm::FloatDefault>& outZ,
+             vtkm::cont::ArrayHandle<vtkm::FloatDefault>& outTheta,
+             vtkm::cont::ArrayHandle<vtkm::FloatDefault>& outPsi,
              vtkm::cont::ArrayHandle<vtkm::Id>& outID)
 {
   //Get all the arguments...
@@ -89,7 +91,7 @@ RunPoincare2(const vtkm::cont::DataSet& ds,
           cellSet, coords,
           As_ff, dAs_ff_rzp, coeff_1D, coeff_2D,
           B_RZP, psi,
-          tracesArr, outRZ, outTP, outID);
+          tracesArr, outR, outZ, outTheta, outPsi, outID);
 
   outID.SyncControlArray();
 }

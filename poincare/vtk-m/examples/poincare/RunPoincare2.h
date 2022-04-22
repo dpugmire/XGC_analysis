@@ -19,8 +19,10 @@ RunPoincare2(const vtkm::cont::DataSet& ds,
              const vtkm::cont::ArrayHandle<vtkm::Vec3f>& B_RZP,
              const vtkm::cont::ArrayHandle<vtkm::FloatDefault>& psi,
              vtkm::cont::ArrayHandle<vtkm::Vec3f>& tracesArr,
-             vtkm::cont::ArrayHandle<vtkm::Vec2f>& outRZ,
-             vtkm::cont::ArrayHandle<vtkm::Vec2f>& outTP,
+             vtkm::cont::ArrayHandle<vtkm::FloatDefault>& outR,
+             vtkm::cont::ArrayHandle<vtkm::FloatDefault>& outZ,
+             vtkm::cont::ArrayHandle<vtkm::FloatDefault>& outTheta,
+             vtkm::cont::ArrayHandle<vtkm::FloatDefault>& outPsi,
              vtkm::cont::ArrayHandle<vtkm::Id>& outID);
 
 #endif
