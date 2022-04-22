@@ -2,6 +2,7 @@ import sys
 
 
 outNm = sys.argv[1]
+isPos = int(sys.argv[2])
 outFile = open(outNm,'w')
 
 
@@ -37,18 +38,17 @@ cnt = 0
 for i in xgc3DFileRange :
     xgcFile = 'xgc.3d.%05d.bp' % i
 
-    output = 'pos.out.%03d' % cnt
-    step = ' --stepSize %f' % h
-
-    outStr = runCmd + ' --output ' + output + step + ' --3DFile %s' % xgcFile
-    outFile.write(outStr + ' & \n')
-
-    output = 'neg.out.%03d' % cnt
-    step = ' --stepSize %f' % -h
-    outStr = runCmd + ' --output ' + output + step + ' --3DFile %s' % xgcFile
-    outFile.write(outStr + ' & \n')
-    #outFile.write('CNT= %d\n' % cnt)
+    if isPos == 1 :
+        output = 'pos.out.%03d' % cnt
+        step = ' --stepSize %f' % h
+        outStr = runCmd + ' --output ' + output + step + ' --3DFile %s' % xgcFile
+        outFile.write(outStr + ' & \n')
+    else:
+        output = 'neg.out.%03d' % cnt
+        step = ' --stepSize %f' % -h
+        outStr = runCmd + ' --output ' + output + step + ' --3DFile %s' % xgcFile
+        outFile.write(outStr + ' & \n')
 
     cnt = cnt+1
-    if cnt % 3 == 0 or i == xgc3DFileRange[-1]:
+    if cnt % 6 == 0 or i == xgc3DFileRange[-1]:
         outFile.write('wait \n\n')
