@@ -635,7 +635,7 @@ public:
 #endif
   }
 
-
+#if 0
   VTKM_EXEC
   void DoStepSizeConvergence(const LocatorType& locator,
                              const CellSetType& cellSet,
@@ -713,6 +713,7 @@ public:
       std::cout<<"h= ("<<h0<<" "<<h1<<") eps= ("<<err0<<" "<<err1<<")"<<std::endl;
     }
   }
+#endif
 
   //template <typename LocatorType>
   VTKM_EXEC
