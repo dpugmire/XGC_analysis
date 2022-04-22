@@ -19,15 +19,20 @@ runCmd = runCmd + ' --thetaRange 0 360 3'
 #runCmd = runCmd + ' --psiVals 0.99 0.995 0.999'
 #runCmd = runCmd + ' --thetaVals 252.5 253.5'
 
+whichType = ''
+if isPos : whichType = 'pos'
+else : whichType = 'neg'
+
+
+
 header ='''#!/bin/bash
 #BSUB -env "all"
 #BSUB -P PHY122
 #BSUB -J Poincare
 #BSUB -W 2:00
 #BSUB -nnodes 1
-#BSUB -o run-%J.log
-#BSUB -e run-%J.log
-#BSUB -q debug '''
+#BSUB -o %s-run-%%J.log
+#BSUB -q debug ''' % whichType
 
 outFile.write(header)
 outFile.write('\n\n')
