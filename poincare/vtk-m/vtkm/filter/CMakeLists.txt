@@ -252,44 +252,44 @@ vtkm_library(
   USE_VTKM_JOB_POOL
   )
 
-vtkm_library(
-  NAME vtkm_filter_contour
-  TEMPLATE_SOURCES ${contour_header_template_sources}
-  HEADERS ${contour_headers}
-  DEVICE_SOURCES ${contour_sources_device}
-  USE_VTKM_JOB_POOL
-  )
+#vtkm_library(
+#  NAME vtkm_filter_contour
+#  TEMPLATE_SOURCES ${contour_header_template_sources}
+#  HEADERS ${contour_headers}
+#  DEVICE_SOURCES ${contour_sources_device}
+#  USE_VTKM_JOB_POOL
+#  )
 
-vtkm_library(
-  NAME vtkm_filter_gradient
-  TEMPLATE_SOURCES ${gradient_header_template_sources}
-  HEADERS ${gradient_headers}
-  DEVICE_SOURCES ${gradient_sources_device}
-  USE_VTKM_JOB_POOL
-  )
+#vtkm_library(
+#  NAME vtkm_filter_gradient
+#  TEMPLATE_SOURCES ${gradient_header_template_sources}
+#  HEADERS ${gradient_headers}
+#  DEVICE_SOURCES ${gradient_sources_device}
+#  USE_VTKM_JOB_POOL
+#  )
 
 set_property(TARGET
   vtkm_filter_common
   vtkm_filter_extra
-  vtkm_filter_contour
-  vtkm_filter_gradient
+#  vtkm_filter_contour
+#  vtkm_filter_gradient
   PROPERTY UNITY_BUILD_MODE GROUP
   )
 
 target_link_libraries(vtkm_filter_common PUBLIC vtkm_worklet)
 target_link_libraries(vtkm_filter_extra PUBLIC vtkm_filter_common)
-target_link_libraries(vtkm_filter_contour PUBLIC vtkm_filter_common)
-target_link_libraries(vtkm_filter_gradient PUBLIC vtkm_filter_common)
+#target_link_libraries(vtkm_filter_contour PUBLIC vtkm_filter_common)
+#target_link_libraries(vtkm_filter_gradient PUBLIC vtkm_filter_common)
 if (VTKm_ENABLE_MPI)
   target_link_libraries(vtkm_filter_common PUBLIC MPI::MPI_CXX)
   target_link_libraries(vtkm_filter_extra PUBLIC MPI::MPI_CXX)
-  target_link_libraries(vtkm_filter_contour PUBLIC MPI::MPI_CXX)
-  target_link_libraries(vtkm_filter_gradient PUBLIC MPI::MPI_CXX)
+#  target_link_libraries(vtkm_filter_contour PUBLIC MPI::MPI_CXX)
+#  target_link_libraries(vtkm_filter_gradient PUBLIC MPI::MPI_CXX)
 endif()
 target_link_libraries(vtkm_filter PUBLIC INTERFACE
   vtkm_filter_extra
-  vtkm_filter_contour
-  vtkm_filter_gradient
+#  vtkm_filter_contour
+#  vtkm_filter_gradient
   vtkm_filter_common
   )
 
