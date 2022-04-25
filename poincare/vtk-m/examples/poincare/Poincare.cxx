@@ -20,6 +20,7 @@
 #include <vtkm/cont/DataSetBuilderUniform.h>
 #include <vtkm/cont/DataSetBuilderExplicit.h>
 #include <vtkm/cont/Timer.h>
+#include <vtkm/filter/ParticleDensityNearestGridPoint.h>
 
 #include <vtkm/io/VTKDataSetWriter.h>
 #include <vtkm/io/VTKDataSetReader.h>
@@ -836,6 +837,66 @@ Poincare(const vtkm::cont::DataSet& ds,
 
   std::string outFileName = args["--output"][0];
   SaveOutput(args, traces, outR, outZ, outTheta, outPsi, outID, outFileName, timeStep);
+
+
+  if (args.find("--dumpDensity") != args.end())
+  {
+    auto vals = args["--dumpDensity"];
+    vtkm::Id nx = std::atoi(vals[0].c_str());
+    vtkm::Id ny = std::atoi(vals[1].c_str());
+
+    //Create particle density
+    vtkm::Id3 cellDims(nx, ny, 1);
+    vtkm::FloatDefault dR = xgcParams.eq_max_r - xgcParams.eq_min_r;
+    vtkm::FloatDefault dZ = xgcParams.eq_max_z - xgcParams.eq_min_z;
+    vtkm::Vec3f origin(xgcParams.eq_min_r, xgcParams.eq_min_z, 0);
+    vtkm::Vec3f spacing(dR/static_cast<vtkm::FloatDefault>(cellDims[0]-1),
+                        dZ/static_cast<vtkm::FloatDefault>(cellDims[1]-1),
+                        1);
+
+    //Create particle dataset.
+    vtkm::Id N = outR.GetNumberOfValues();
+    vtkm::cont::ArrayHandle<vtkm::Vec3f> positions;
+    positions.Allocate(N);
+    auto pPortal = positions.WritePortal();
+    auto rPortal = outR.ReadPortal();
+    auto zPortal = outZ.ReadPortal();
+    for (vtkm::Id i = 0; i < N; i++)
+      pPortal.Set(i, vtkm::Vec3f(rPortal.Get(i), zPortal.Get(i), 0));
+    //std::cout<<"Particle Pts: "<<positions.GetNumberOfValues()<<std::endl;
+
+    vtkm::cont::ArrayHandle<vtkm::Id> connectivity;
+    vtkm::cont::ArrayCopy(vtkm::cont::make_ArrayHandleIndex(N), connectivity);
+    auto particleDataSet = vtkm::cont::DataSetBuilderExplicit::Create(
+      positions, vtkm::CellShapeTagVertex{}, 1, connectivity);
+
+    //Save out the particles.
+    //Add ID, psi0, punc
+    std::string particleName = outFileName + "particles.vtk";
+    vtkm::io::VTKDataSetWriter writerP(particleName);
+    writerP.WriteDataSet(particleDataSet);
+
+    vtkm::cont::ArrayHandle<vtkm::FloatDefault> mass;
+    vtkm::cont::ArrayCopy(vtkm::cont::make_ArrayHandleConstant(1, N), mass);
+    particleDataSet.AddCellField("mass", mass);
+
+    vtkm::filter::ParticleDensityNearestGridPoint pDensityFilter(cellDims, origin, spacing);
+    pDensityFilter.SetActiveField("mass");
+    //pDensityFilter.SetComputeNumberDensity(true);
+    //pDensityFilter.SetDivideByVolume(false);
+    auto density3D = pDensityFilter.Execute(particleDataSet);
+
+    //Density filter doesn't work for 2D, so create a 2D dataset.
+    vtkm::Id2 dims2D(nx+1, ny+1);
+    vtkm::Vec2f origin2D(origin[0], origin[1]);
+    vtkm::Vec2f spacing2D(spacing[0], spacing[1]);
+    auto density2D = vtkm::cont::DataSetBuilderUniform::Create(dims2D, origin2D, spacing2D);
+    density2D.AddField(density3D.GetField("density"));
+
+    std::string densityName = outFileName + ".vtk";
+    vtkm::io::VTKDataSetWriter writer(densityName);
+    writer.WriteDataSet(density2D);
+  }
 }
 
 vtkm::cont::ArrayHandle<vtkm::FloatDefault>

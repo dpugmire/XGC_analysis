@@ -105,7 +105,7 @@ add_subdirectory(worklet)
 
 #-----------------------------------------------------------------------------
 #add the filter folder
-#add_subdirectory(filter)
+add_subdirectory(filter)
 
 #-----------------------------------------------------------------------------
 # Build rendering
