@@ -731,7 +731,10 @@ SaveOutput(std::map<std::string, std::vector<std::string>>& args,
 
   adiosS* outputStuff = adiosStuff["output"];
 
+  std::size_t nPunc = static_cast<std::size_t>(std::atoi(args["--numPunc"][0].c_str()));
   std::size_t nPts = static_cast<std::size_t>(outR.GetNumberOfValues());
+
+  nPts /= nPunc;
 
   //create a (R,Z,ID) and (Theta, Psi, ID) arrays.
   auto RBuff = vtkm::cont::ArrayHandleBasic<vtkm::FloatDefault>(outR).GetReadPointer();
@@ -743,7 +746,7 @@ SaveOutput(std::map<std::string, std::vector<std::string>>& args,
   if (firstTime)
   {
     outputStuff->io.DefineAttribute<std::string>("Arguments", argString);
-    std::vector<std::size_t> shape = {nPts}, offset = {0}, size = {nPts};
+    std::vector<std::size_t> shape = {nPts, nPunc}, offset = {0,0}, size = {nPts, nPunc};
     outputStuff->io.DefineVariable<vtkm::FloatDefault>("R", shape, offset, size);
     outputStuff->io.DefineVariable<vtkm::FloatDefault>("Z", shape, offset, size);
     outputStuff->io.DefineVariable<vtkm::FloatDefault>("Theta", shape, offset, size);
