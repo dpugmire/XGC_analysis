@@ -34,7 +34,10 @@
 #include <random>
 #include <chrono>
 #include <variant>
+#include <string>
 #include <mpi.h>
+#include <sys/types.h>
+#include <sys/stat.h>
 
 #include "XGCParameters.h"
 #include "FindMaxR.h"
@@ -654,6 +657,71 @@ void WriteHeader(const std::string& fname, const std::string& header)
   f.close();
 }
 
+void GetOutputDirFile(std::map<std::string, std::vector<std::string>>& args,
+                      std::string& dirName,
+                      std::string& fileName)
+{
+  dirName = "./";
+  fileName = args["--output"][0];
+
+  //create a directory name based on the args.
+  if (args.find("--autoDir") != args.end())
+  {
+    char tmp[4096];
+    sprintf(tmp, "h%g", (double)std::atof(args["--stepSize"][0].c_str()));
+    sprintf(tmp, "%s_p%d", tmp, std::atoi(args["--numPunc"][0].c_str()));
+    if (args.find("--psiRange") != args.end())
+    {
+      auto vals = args["--psiRange"];
+      sprintf(tmp, "%s_pR%g_%g_%d", tmp,
+              (double)std::atof(vals[0].c_str()),
+              (double)std::atof(vals[1].c_str()),
+              std::atoi(vals[2].c_str()));
+    }
+    else if (args.find("--psiVals") != args.end())
+    {
+      auto vals = args["--psiRange"];
+      sprintf(tmp, "%s_pV%d", tmp, (int)vals.size());
+    }
+    else
+      sprintf(tmp, "%s_sx", tmp);
+
+    if (args.find("--thetaRange") != args.end())
+    {
+      auto vals = args["--thetaRange"];
+      if (vals.size() == 1)
+        sprintf(tmp, "%s_tR%d", tmp, (int)vals.size());
+      else
+        sprintf(tmp, "%s_tR%g_%g_%d", tmp,
+                (double)std::atof(vals[0].c_str()),
+                (double)std::atof(vals[1].c_str()),
+                std::atoi(vals[2].c_str()));
+    }
+    else if (args.find("--thetaVals") != args.end())
+    {
+      auto vals = args["--thetaVals"];
+      sprintf(tmp, "%s_tV%d", tmp, (int)vals.size());
+    }
+
+    dirName = tmp;
+    bool dirExists = false;
+    struct stat info;
+    if (stat(dirName.c_str(), &info) != 0)
+      dirExists = false;
+    else if (info.st_mode & S_IFDIR)
+      dirExists = true;
+
+    if (!dirExists)
+    {
+      std::cout<<"Dir is not there! Create it."<<std::endl;
+      std::string cmd = "mkdir " + dirName;
+      system(cmd.c_str());
+    }
+  }
+  dirName = dirName + "/";
+  std::cout<<"OUTPUT= "<<dirName + fileName<<std::endl;
+}
+
 void
 SaveOutput(std::map<std::string, std::vector<std::string>>& args,
            const std::vector<std::vector<vtkm::Vec3f>>& traces,
@@ -662,24 +730,18 @@ SaveOutput(std::map<std::string, std::vector<std::string>>& args,
            const vtkm::cont::ArrayHandle<vtkm::FloatDefault>& outTheta,
            const vtkm::cont::ArrayHandle<vtkm::FloatDefault>& outPsi,
            const vtkm::cont::ArrayHandle<vtkm::Id>& outID,
-           const std::string& outFileName = "",
            int timeStep=0)
 {
+
+  std::string outFileName, outDir;
+  GetOutputDirFile(args, outDir, outFileName);
+
   std::string tracesNm, puncNm, puncThetaPsiNm, adiosNm;
-  if (outFileName.empty())
-  {
-    tracesNm = "./traces.txt";
-    puncNm = "./punctures.vtk";
-    puncThetaPsiNm = "./punctures.theta_psi.vtk";
-    adiosNm = "./punctures.bp";
-  }
-  else
-  {
-    tracesNm = outFileName + ".traces.txt";
-    puncNm = outFileName + ".punc.vtk";
-    puncThetaPsiNm = outFileName + ".punc.theta_psi.vtk";
-    adiosNm = outFileName + ".bp";
-  }
+  tracesNm = outDir + outFileName + ".traces.txt";
+  puncNm = outDir + outFileName + ".punc.vtk";
+  puncThetaPsiNm = outDir + outFileName + ".punc.theta_psi.vtk";
+  adiosNm = outDir + outFileName + ".bp";
+  std::cout<<"ADIOS NAME= "<<adiosNm<<std::endl;
 
   bool tExists = Exists(tracesNm);
   bool pExists = Exists(puncNm);
@@ -838,12 +900,11 @@ Poincare(const vtkm::cont::DataSet& ds,
     }
   }
 
-  std::string outFileName = args["--output"][0];
-  SaveOutput(args, traces, outR, outZ, outTheta, outPsi, outID, outFileName, timeStep);
-
+  SaveOutput(args, traces, outR, outZ, outTheta, outPsi, outID, timeStep);
 
   if (args.find("--dumpDensity") != args.end())
   {
+    std::string outFileName = args["--output"][0];
     auto vals = args["--dumpDensity"];
     vtkm::Id nx = std::atoi(vals[0].c_str());
     vtkm::Id ny = std::atoi(vals[1].c_str());
