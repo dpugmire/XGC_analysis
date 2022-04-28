@@ -690,7 +690,7 @@ void GetOutputDirFile(std::map<std::string, std::vector<std::string>>& args,
     {
       auto vals = args["--thetaRange"];
       if (vals.size() == 1)
-        sprintf(tmp, "%s_tR%d", tmp, (int)vals.size());
+        sprintf(tmp, "%s_tR%d", tmp, std::atoi(vals[0].c_str()));
       else
         sprintf(tmp, "%s_tR%g_%g_%d", tmp,
                 (double)std::atof(vals[0].c_str()),
