@@ -670,43 +670,43 @@ void GetOutputDirFile(std::map<std::string, std::vector<std::string>>& args,
   if (args.find("--autoDir") != args.end())
   {
     std::stringstream ss;
-    char tmp[4096];
-    sprintf(tmp, "h%g", (double)std::fabs(std::atof(args["--stepSize"][0].c_str())));
-    sprintf(tmp, "%s_p%d", tmp, std::atoi(args["--numPunc"][0].c_str()));
+    ss<<"h"<<(double)std::fabs(std::atof(args["--stepSize"][0].c_str()));
+    ss<<"_p"<<std::atoi(args["--numPunc"][0].c_str());
     if (args.find("--psiRange") != args.end())
     {
       auto vals = args["--psiRange"];
-      sprintf(tmp, "%s_pR%g_%g_%d", tmp,
-              (double)std::atof(vals[0].c_str()),
-              (double)std::atof(vals[1].c_str()),
-              std::atoi(vals[2].c_str()));
+      ss<<"_pR"<<(double)std::atof(vals[0].c_str())<<"_"<<(double)std::atof(vals[1].c_str())<<"_"<<std::atoi(vals[2].c_str());
     }
     else if (args.find("--psiVals") != args.end())
     {
       auto vals = args["--psiRange"];
-      sprintf(tmp, "%s_pV%d", tmp, (int)vals.size());
+      ss<<"_pV"<<(int)vals.size();
     }
     else
-      sprintf(tmp, "%s_sx", tmp);
+    {
+      ss<<"_Sx";
+    }
 
     if (args.find("--thetaRange") != args.end())
     {
       auto vals = args["--thetaRange"];
       if (vals.size() == 1)
-        sprintf(tmp, "%s_tR%d", tmp, std::atoi(vals[0].c_str()));
+      {
+        ss<<"_tR"<<std::atoi(vals[0].c_str());
+      }
       else
-        sprintf(tmp, "%s_tR%g_%g_%d", tmp,
-                (double)std::atof(vals[0].c_str()),
-                (double)std::atof(vals[1].c_str()),
-                std::atoi(vals[2].c_str()));
+      {
+        ss<<"_tR"<<std::atoi(vals[0].c_str())<<"_"<<(double)std::atof(vals[1].c_str())<<"_"<<std::atoi(vals[2].c_str());
+      }
     }
     else if (args.find("--thetaVals") != args.end())
     {
       auto vals = args["--thetaVals"];
-      sprintf(tmp, "%s_tV%d", tmp, (int)vals.size());
+      ss<<"_tV"<<(int)vals.size();
     }
 
-    dirName = tmp;
+    dirName = ss.str();
+
     bool dirExists = false;
     struct stat info;
     if (stat(dirName.c_str(), &info) != 0)
