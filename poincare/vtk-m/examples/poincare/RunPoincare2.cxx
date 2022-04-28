@@ -26,6 +26,9 @@ RunPoincare2(const vtkm::cont::DataSet& ds,
 {
   //Get all the arguments...
   vtkm::FloatDefault stepSize = std::atof(args["--stepSize"][0].c_str());
+  if (args.find("--revDir") != args.end())
+    stepSize = -stepSize;
+
   vtkm::Id numPunc = std::atoi(args["--numPunc"][0].c_str());
 
   bool useTraces = false;

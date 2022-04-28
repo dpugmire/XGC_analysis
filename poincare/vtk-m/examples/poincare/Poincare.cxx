@@ -31,6 +31,8 @@
 #endif
 
 #include <adios2.h>
+#include <iostream>
+#include <sstream>
 #include <random>
 #include <chrono>
 #include <variant>
@@ -667,8 +669,9 @@ void GetOutputDirFile(std::map<std::string, std::vector<std::string>>& args,
   //create a directory name based on the args.
   if (args.find("--autoDir") != args.end())
   {
+    std::stringstream ss;
     char tmp[4096];
-    sprintf(tmp, "h%g", (double)std::atof(args["--stepSize"][0].c_str()));
+    sprintf(tmp, "h%g", (double)std::fabs(std::atof(args["--stepSize"][0].c_str())));
     sprintf(tmp, "%s_p%d", tmp, std::atoi(args["--numPunc"][0].c_str()));
     if (args.find("--psiRange") != args.end())
     {
@@ -720,6 +723,64 @@ void GetOutputDirFile(std::map<std::string, std::vector<std::string>>& args,
   }
   dirName = dirName + "/";
   std::cout<<"OUTPUT= "<<dirName + fileName<<std::endl;
+}
+
+void
+DumpSeeds(const std::vector<vtkm::Particle>& seeds,
+          const std::vector<vtkm::Vec2f>& thetaPsi,
+          const XGCParameters& xgcParams)
+{
+  //Save to a text file.
+  std::ofstream f("seeds.txt", std::ofstream::out);
+  f<<"ID, R, Z, Phi"<<std::endl;
+  f<<std::setprecision(12);
+  for (std::size_t i = 0; i < seeds.size(); i++)
+    f<<seeds[i].ID<<", "<<seeds[i].Pos[0]<<", "<<seeds[i].Pos[2]<<", "<<seeds[i].Pos[1]<<std::endl;
+  f.close();
+
+  auto N = seeds.size();
+  //save to ADIOS
+  auto io = adios2::IO(adios->DeclareIO("seeds"));
+  auto engine = io.Open("poincare.seeds.bp", adios2::Mode::Write);
+
+  std::vector<std::size_t> shape{N}, offset{0}, size=shape;
+  auto varID = io.DefineVariable<vtkm::Id>("ID", shape, offset, size);
+  auto varR = io.DefineVariable<vtkm::FloatDefault>("R", shape, offset, size);
+  auto varP = io.DefineVariable<vtkm::FloatDefault>("Phi", shape, offset, size);
+  auto varZ = io.DefineVariable<vtkm::FloatDefault>("Z", shape, offset, size);
+
+  auto varTheta = io.DefineVariable<vtkm::FloatDefault>("Theta", shape, offset, size);
+  auto varPsi = io.DefineVariable<vtkm::FloatDefault>("Psi", shape, offset, size);
+  auto varPsiN = io.DefineVariable<vtkm::FloatDefault>("PsiN", shape, offset, size);
+
+  std::vector<vtkm::Id> ID(N);
+  std::vector<vtkm::FloatDefault> R(N), P(N), Z(N), Psi(N, 0.0), PsiN(N), Theta(N, 0.0);
+
+  bool haveThetaPsi = !thetaPsi.empty();
+  for (std::size_t i = 0; i < N; i++)
+  {
+    const auto& s = seeds[i];
+    ID[i] = s.ID;
+    R[i] = s.Pos[0];
+    P[i] = s.Pos[1];
+    Z[i] = s.Pos[2];
+    if (haveThetaPsi)
+    {
+      Theta[i] = thetaPsi[i][0];
+      Psi[i] = thetaPsi[i][1];
+      PsiN[i] = Psi[i] / xgcParams.eq_x_psi;
+    }
+  }
+
+  engine.BeginStep();
+  engine.Put<vtkm::Id>(varID, ID.data());
+  engine.Put<vtkm::FloatDefault>(varR, R.data());
+  engine.Put<vtkm::FloatDefault>(varP, P.data());
+  engine.Put<vtkm::FloatDefault>(varZ, Z.data());
+  engine.Put<vtkm::FloatDefault>(varTheta, Theta.data());
+  engine.Put<vtkm::FloatDefault>(varPsi, Psi.data());
+  engine.Put<vtkm::FloatDefault>(varPsiN, PsiN.data());
+  engine.EndStep();
 }
 
 void
@@ -1579,7 +1640,8 @@ InterpolatePsi(const vtkm::Vec2f& ptRZ,
 std::vector<vtkm::Particle>
 GenerateThetaPsiSeeds(std::map<std::string, std::vector<std::string>>& args,
                       const vtkm::cont::DataSet& ds,
-                      XGCParameters& xgcParams)
+                      XGCParameters& xgcParams,
+                      std::vector<vtkm::Vec2f>& seedsThetaPsi)
 
 {
   std::vector<vtkm::Particle> seeds;
@@ -1726,6 +1788,7 @@ GenerateThetaPsiSeeds(std::map<std::string, std::vector<std::string>>& args,
       vtkm::Vec3f pt_rpz(R, 0, Z);
       vtkm::Particle p({pt_rpz, ID++});
       seeds.push_back(p);
+      seedsThetaPsi.push_back({theta, psiTarget});
     }
   }
 
@@ -1738,6 +1801,7 @@ GenerateSeeds(const vtkm::cont::DataSet& ds,
               std::map<std::string, std::vector<std::string>>& args)
 {
   std::vector<vtkm::Particle> seeds;
+  std::vector<vtkm::Vec2f> seedsThetaPsi;
 
   if (args.find("--range") != args.end())
   {
@@ -1759,7 +1823,7 @@ GenerateSeeds(const vtkm::cont::DataSet& ds,
            args.find("--psiVals") != args.end() ||
            args.find("--thetaVals") != args.end())
   {
-    seeds = GenerateThetaPsiSeeds(args, ds, xgcParams);
+    seeds = GenerateThetaPsiSeeds(args, ds, xgcParams, seedsThetaPsi);
   }
   else if (args.find("--seed") != args.end())
   {
@@ -1885,14 +1949,7 @@ GenerateSeeds(const vtkm::cont::DataSet& ds,
   }
 
   if (args.find("--dumpSeeds") != args.end())
-  {
-    std::ofstream f("seeds.txt", std::ofstream::out);
-    f<<"ID, R, Z, Phi"<<std::endl;
-    f<<std::setprecision(12);
-    for (std::size_t i = 0; i < seeds.size(); i++)
-      f<<seeds[i].ID<<", "<<seeds[i].Pos[0]<<", "<<seeds[i].Pos[2]<<", "<<seeds[i].Pos[1]<<std::endl;
-    f.close();
-  }
+    DumpSeeds(seeds, seedsThetaPsi, xgcParams);
 
   std::cout<<" ****** Num Seeds= "<<seeds.size()<<std::endl;
 
