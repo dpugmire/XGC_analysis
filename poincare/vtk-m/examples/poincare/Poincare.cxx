@@ -705,6 +705,12 @@ void GetOutputDirFile(std::map<std::string, std::vector<std::string>>& args,
       ss<<"_tV"<<(int)vals.size();
     }
 
+    if (args.find("--deltaBScale") != args.end())
+    {
+      auto deltaBScale = std::atof(args["--deltaBScale"][0].c_str());
+      ss<<"_dB"<<deltaBScale;
+    }
+
     dirName = ss.str();
 
     bool dirExists = false;
@@ -1694,7 +1700,7 @@ GenerateThetaPsiSeeds(std::map<std::string, std::vector<std::string>>& args,
     for (int i = 0; i < numThetas; i++, theta += dTheta)
     {
       thetaVals.push_back(theta*degToRad);
-      std::cout<<"Theta_i= "<<theta<<std::endl;
+      //std::cout<<"Theta_i= "<<theta<<std::endl;
     }
   }
   else if (args.find("--thetaVals") != args.end())
