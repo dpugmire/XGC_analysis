@@ -1615,6 +1615,9 @@ public:
     vtkm::Vec3f gradAs_rzp(gradAs_rpz[0], gradAs_rpz[2], gradAs_rpz[1]);
     vtkm::Vec3f deltaB_rzp = AsCurl_bhat_rzp + vtkm::Cross(gradAs_rzp, bhat_rzp);
 
+    if (this->UseDeltaBScale)
+      deltaB_rzp = deltaB_rzp * this->DeltaBScale;
+
     deltaB_rzp[2] /= R;
     pInfo.B0_rzp[2] /= R;
 
@@ -1691,6 +1694,9 @@ public:
 
   bool ValidateInterpolation = false;
   vtkm::Id ValidateInterpolationSkip = 1;
+
+  bool UseDeltaBScale = false;
+  vtkm::FloatDefault DeltaBScale = 1.0;
 };
 
 #endif

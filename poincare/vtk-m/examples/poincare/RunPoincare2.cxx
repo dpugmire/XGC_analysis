@@ -50,6 +50,14 @@ RunPoincare2(const vtkm::cont::DataSet& ds,
     validateInterpSkip = static_cast<vtkm::Id>(std::stoi(args["--validateInterpolation"][0].c_str()));
   }
 
+  bool useDeltaBScale = false;
+  vtkm::FloatDefault deltaBScale = 1.0;
+  if (args.find("--deltaBScale") != args.end())
+  {
+    useDeltaBScale = true;
+    deltaBScale = std::atof(args["--deltaBScale"][0].c_str());
+  }
+
   auto cellSet = ds.GetCellSet().Cast<vtkm::cont::CellSetSingleType<>>();
 
   vtkm::cont::CellLocatorTwoLevel locator2L;
@@ -77,6 +85,8 @@ RunPoincare2(const vtkm::cont::DataSet& ds,
   worklet.UseLinearB = useLinearB;
   worklet.ValidateInterpolation = validateInterp;
   worklet.ValidateInterpolationSkip = validateInterpSkip;
+  worklet.UseDeltaBScale = useDeltaBScale;
+  worklet.DeltaBScale = deltaBScale;
 
   if (useTraces)
   {
