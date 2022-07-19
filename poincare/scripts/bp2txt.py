@@ -2,63 +2,41 @@ import adios2
 import sys
 import numpy as np
 
-if len(sys.argv) != 4 :
-    print('usage: ', sys.argv[0], ' infile outfile particle_skip')
+if len(sys.argv) != 3 :
+    print('usage: ', sys.argv[0], ' infile outfile')
     sys.exit()
-
 
 inFile = sys.argv[1]
 out = sys.argv[2]
-particle_skip = int(sys.argv[3])
-MAXPUNC = 5000
 
-outRZ = out + '.txt'
-outTP = out + '.TP.txt'
+outName = out + '.txt'
 
-f=adios2.open(inFile, 'r')
+##Read in data.
+f = adios2.open(inFile, 'r')
+ID = f.read('ID')
+R = f.read('R')
+Z = f.read('Z')
+THETA = f.read('Theta')
+PSI = f.read('Psi')
 
-def ParseArrays(ids, x, y, psi, skip, maxPunc) :
-    out = []
+fOut = open(outName, 'w')
+fOut.write('ID, R, Z, THETA, PSI\n')
+fOut = open(outName, 'a') ##open in append mode now.
 
-    id0 = -1
-    pCnt = 0
-    n = int(len(x))
-    psi0 = -1
-    for i in range(0, n, skip) :
-        id = ids[i]
-        if id < 0 : continue
+n = len(ID)
+for i in range(0,n) :
+    if i % 500 == 0 : print('Processing field line ', i)
 
-        if id0 == id :
-            pCnt = pCnt+1
-        else :
-            id0 = id
-            pCnt = 0
-            psi0 = psi[i]
+    id = ID[i]
+    validIdx = np.where(id >= 0)
+    validIds = id[validIdx]
+    r = R[i][validIdx]
+    z = Z[i][validIdx]
 
-        p = psi[i]
-        if pCnt < maxPunc :
-            out.append((id, x[i], y[i], p, psi0, pCnt))
-
-    return out
+    theta = THETA[i][validIdx]
+    psi = PSI[i][validIdx]
+    #print(len(id), len(psi), len(theta))
 
 
-ID=f.read('ID')
-
-print('Reading RZ.')
-r=f.read('R')
-z=f.read('Z')
-print('Reading TP.')
-t=f.read('Theta')
-p=f.read('Psi')
-
-pRZ = ParseArrays(ID, r, z, p, particle_skip, MAXPUNC)
-print('saving ', outRZ)
-np.savetxt(outRZ, pRZ, delimiter=",", fmt='%d, %lf, %lf, %lf, %lf, %d', header='ID, R, Z, PSI, PSI0, PUNC', comments='')
-print('Done.')
-pRZ = []
-
-pTP = ParseArrays(ID, t, p, p, particle_skip, MAXPUNC)
-print('saving ', outTP)
-np.savetxt(outTP, pTP, delimiter=",", fmt='%d, %lf, %lf, %lf, %lf, %d', header='ID, THETA, PSI, PSI, PSI0, PUNC', comments='')
-print('Done.')
-pTP = []
+    data = list(zip(validIds, r, z, theta, psi))
+    np.savetxt(fOut, data, delimiter=',', fmt='%d, %12.10lf, %12.10lf, %12.10lf, %12.10lf')
