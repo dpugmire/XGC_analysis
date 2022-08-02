@@ -1,3 +1,9 @@
+
+
+Summit location:
+/gpfs/alpine/proj-shared/csc143/pugmire/summit/XGC_analysis/XGC_analysis/poincare
+
+
 Hager: 300K RK4 steps, 700-800 punctures = 428 steps per puncture.
 
 my code:

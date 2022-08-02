@@ -8,7 +8,7 @@
 
 void
 RunPoincare2(const vtkm::cont::DataSet& ds,
-             vtkm::cont::ArrayHandle<vtkm::Particle>& seeds,
+             std::vector<vtkm::Particle>& seeds,
              XGCParameters& xgcParams,
              std::map<std::string, std::vector<std::string>>& args,
              const vtkm::cont::ArrayHandle<vtkm::FloatDefault>& As_ff,
@@ -78,8 +78,15 @@ RunPoincare2(const vtkm::cont::DataSet& ds,
   if (args.find("--MaxItersPerPunc") != args.end())
     maxItersPerPunc = std::stoi(args["--MaxItersPerPunc"][0].c_str());
 
-  PoincareWorklet2 worklet(numPunc, 0.0f, stepSize, maxItersPerPunc, useTraces, xgcParams);
-  worklet.UseBOnly = useBOnly;
+  bool bothDir = false;
+  vtkm::Id2 fwdIdxRange(-1,-1);
+  if (args.find("--bothDir") != args.end())
+  {
+    bothDir = true;
+    fwdIdxRange = vtkm::Id2(0, static_cast<vtkm::Id>(seeds.size()/2));
+  }
+
+  PoincareWorklet2 worklet(numPunc, 0.0f, stepSize, maxItersPerPunc, useTraces, xgcParams, bothDir, fwdIdxRange);
 
   worklet.one_d_cub_dpsi_inv = 1.0/dPsi;
   worklet.UseLinearB = useLinearB;
@@ -88,10 +95,12 @@ RunPoincare2(const vtkm::cont::DataSet& ds,
   worklet.UseDeltaBScale = useDeltaBScale;
   worklet.DeltaBScale = deltaBScale;
 
+  auto seedsArray = vtkm::cont::make_ArrayHandle(seeds, vtkm::CopyFlag::On);
+
   if (useTraces)
   {
     std::vector<vtkm::Vec3f> t;
-    t.resize(seeds.GetNumberOfValues()*worklet.MaxIter, {-100, -100, -100});
+    t.resize(seedsArray.GetNumberOfValues()*worklet.MaxIter, {-100, -100, -100});
     std::cout<<"Allocate TRACES: "<<t.size()<<std::endl;
     tracesArr = vtkm::cont::make_ArrayHandle(t, vtkm::CopyFlag::On);
   }
@@ -99,7 +108,7 @@ RunPoincare2(const vtkm::cont::DataSet& ds,
   vtkm::cont::ArrayHandle<vtkm::Vec3f> coords;
   vtkm::cont::ArrayCopy(ds.GetCoordinateSystem().GetData(), coords);
 
-  invoker(worklet, seeds,
+  invoker(worklet, seedsArray,
           locator2L,
           cellSet, coords,
           As_ff, dAs_ff_rzp, coeff_1D, coeff_2D,

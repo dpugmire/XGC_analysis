@@ -88,6 +88,7 @@ class PoincareWorklet2 : public vtkm::worklet::WorkletMapField
     ParticleInfo(const ParticleInfo&) = default;
     ParticleInfo& operator=(const ParticleInfo&) = default;
 
+    vtkm::Id Idx = -1;
     vtkm::Id3 PrevCell = {-1,-1,-1};
     vtkm::FloatDefault Psi = 0;
     vtkm::FloatDefault dpsi_dr=0, dpsi_dz=0, d2psi_drdz=0, d2psi_d2r=0, d2psi_d2z=0;
@@ -119,8 +120,12 @@ public:
                    vtkm::FloatDefault stepSize,
                    vtkm::Id maxStepsPerPunc,
                    bool saveTraces,
-                   const XGCParameters& xgcParams)
-    : MaxIter(maxPunc * maxStepsPerPunc)
+                   const XGCParameters& xgcParams,
+                   bool bothDir=false,
+                   vtkm::Id2 fwdIdxRange=vtkm::Id2(-1,-1))
+    : BothDir(bothDir)
+    , ForwardIdxRange(fwdIdxRange)
+    , MaxIter(maxPunc * maxStepsPerPunc)
     , MaxPunc(maxPunc)
     , PlaneVal(planeVal)
     , StepSize(stepSize)
@@ -130,8 +135,8 @@ public:
     this->Period = vtkm::TwoPi() / static_cast<vtkm::FloatDefault>(xgcParams.sml_wedge_n);
     this->NumNodes = xgcParams.numNodes;
     this->dPhi = this->Period/static_cast<vtkm::FloatDefault>(this->NumPlanes);
-    this->StepSize_2 = this->StepSize / 2.0;
-    this->StepSize_6 = this->StepSize / 6.0;
+//    this->StepSize_2 = this->StepSize / 2.0;
+//    this->StepSize_6 = this->StepSize / 6.0;
     std::cout<<"************************ NumPlanes= "<<this->NumPlanes<<std::endl;
 
     this->nr = xgcParams.eq_mr-1;
@@ -500,6 +505,7 @@ public:
     DBG("Begin: "<<particle<<std::endl);
 
     ParticleInfo pInfo;
+    pInfo.Idx = idx;
 
     if (this->ValidateInterpolation)
     {
@@ -583,7 +589,7 @@ public:
         auto R = particle.Pos[0], Z = particle.Pos[2];
         auto theta = vtkm::ATan2(Z-this->eq_axis_z, R-this->eq_axis_r);
         if (theta < 0)
-          theta += this->Period;
+          theta += vtkm::TwoPi();
 
         //calcualte psi. need to stash psi on the particle somehow....
         vtkm::Vec3f ptRPZ = particle.Pos;
@@ -738,7 +744,7 @@ public:
     //Yn+1 = Yn + 1/6 h (k1+2k2+2k3+k4)
     vtkm::Vec3f p0 = ptRPZ, tmp = ptRPZ;
 
-    vtkm::FloatDefault h = this->StepSize, h_2 = this->StepSize_2;
+    vtkm::FloatDefault h = this->GetStepSize(pInfo.Idx), h_2 = h * 0.5;
 
     DBG("    ****** K1"<<std::endl);
     bool v1, v2, v3, v4;
@@ -1629,6 +1635,15 @@ public:
     return true;
   }
 
+  VTKM_EXEC vtkm::FloatDefault
+  GetStepSize(const vtkm::Id& idx) const
+  {
+    if (this->BothDir && idx >= this->ForwardIdxRange[2])
+      return -this->StepSize;
+
+    return this->StepSize;
+  }
+
   VTKM_EXEC void
   GetPlaneIdx(const vtkm::FloatDefault& phi,
               vtkm::FloatDefault& phiN,
@@ -1663,13 +1678,16 @@ public:
     T = (phiN-phi0) / (phi1-phi0);
   }
 
+  bool BothDir = false;
+  vtkm::Id2 ForwardIdxRange = vtkm::Id2(-1, -1);
+
   vtkm::Id MaxIter = 0;
   vtkm::Id MaxPunc = 0;
   vtkm::FloatDefault PlaneVal = 0.0f;
   vtkm::FloatDefault Period;
   vtkm::FloatDefault StepSize;
-  vtkm::FloatDefault StepSize_2;
-  vtkm::FloatDefault StepSize_6;
+//  vtkm::FloatDefault StepSize_2;
+//  vtkm::FloatDefault StepSize_6;
 
   vtkm::Id NumPlanes;
   vtkm::Id NumNodes;

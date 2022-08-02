@@ -9,7 +9,7 @@
 
 void
 RunPoincare2(const vtkm::cont::DataSet& ds,
-             vtkm::cont::ArrayHandle<vtkm::Particle>& seeds,
+             std::vector<vtkm::Particle>& seeds,
              XGCParameters& xgcParams,
              std::map<std::string, std::vector<std::string>>& args,
              const vtkm::cont::ArrayHandle<vtkm::FloatDefault>& As_ff,

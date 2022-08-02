@@ -337,8 +337,7 @@ ReadPsiInterp(adiosS* eqStuff,
   eqStuff->engine.Get(eqStuff->io.InquireVariable<double>("eq_x_psi"), &xgcParams.eq_x_psi, adios2::Mode::Sync);
   eqStuff->engine.Get(eqStuff->io.InquireVariable<double>("eq_x_r"), &xgcParams.eq_x_r, adios2::Mode::Sync);
   eqStuff->engine.Get(eqStuff->io.InquireVariable<double>("eq_x_z"), &xgcParams.eq_x_z, adios2::Mode::Sync);
-  if (unitsStuff != nullptr)
-    unitsStuff->engine.Get(unitsStuff->io.InquireVariable<int>("sml_wedge_n"), &xgcParams.sml_wedge_n, adios2::Mode::Sync);
+  unitsStuff->engine.Get(unitsStuff->io.InquireVariable<int>("sml_wedge_n"), &xgcParams.sml_wedge_n, adios2::Mode::Sync);
 
   ReadOther(eqStuff, ds, "eq_I");
   ReadOther(eqStuff, ds, "eq_psi_grid");
@@ -904,7 +903,7 @@ SaveOutput(std::map<std::string, std::vector<std::string>>& args,
 void
 Poincare(const vtkm::cont::DataSet& ds,
          XGCParameters& xgcParams,
-         vtkm::cont::ArrayHandle<vtkm::Particle>& seeds,
+         std::vector<vtkm::Particle>& seeds,
          std::map<std::string, std::vector<std::string>>& args,
          int timeStep=0)
 {
@@ -922,7 +921,7 @@ Poincare(const vtkm::cont::DataSet& ds,
   vtkm::cont::ArrayHandle<vtkm::Vec3f> tracesArr;
   vtkm::cont::ArrayHandle<vtkm::FloatDefault> outR, outZ, outTheta, outPsi;
   vtkm::cont::ArrayHandle<vtkm::Id> outID;
-  vtkm::Id nSeeds = seeds.GetNumberOfValues();
+  vtkm::Id nSeeds = seeds.size();
 
   vtkm::Id numPunc = std::atoi(args["--numPunc"][0].c_str());
   vtkm::cont::ArrayHandleConstant<vtkm::Id> initIds(-1, numPunc*nSeeds);
@@ -1270,10 +1269,7 @@ ReadStaticData(std::map<std::string, std::vector<std::string>>& args,
   adiosStuff["equil"] = new adiosS(adios, "xgc.equil.bp", "equil", adiosArgs);
   adiosStuff["bfield"] = new adiosS(adios, "xgc.bfield.bp", "bfield", adiosArgs);
   adiosStuff["coeff"] = new adiosS(adios, coeffFile, "coeff", adiosArgs);
-  if (adiosS::Exists("xgc.units.bp", adiosArgs))
-    adiosStuff["units"] = new adiosS(adios, "xgc.units.bp", "units", adiosArgs);
-  else
-    adiosStuff["units"] = nullptr;
+  adiosStuff["units"] = new adiosS(adios, "xgc.units.bp", "units", adiosArgs);
 
   auto meshStuff = adiosStuff["mesh"];
   auto equilStuff = adiosStuff["equil"];
@@ -1285,8 +1281,7 @@ ReadStaticData(std::map<std::string, std::vector<std::string>>& args,
   equilStuff->engine.BeginStep();
   coeffStuff->engine.BeginStep();
   bfieldStuff->engine.BeginStep();
-  if (unitsStuff)
-    unitsStuff->engine.BeginStep();
+  unitsStuff->engine.BeginStep();
 
   meshStuff->engine.Get(meshStuff->io.InquireVariable<int>("n_n"), &xgcParams.numNodes, adios2::Mode::Sync);
   meshStuff->engine.Get(meshStuff->io.InquireVariable<int>("n_t"), &xgcParams.numTri, adios2::Mode::Sync);
@@ -1724,7 +1719,7 @@ GenerateThetaPsiSeeds(std::map<std::string, std::vector<std::string>>& args,
   vtkm::Vec2f drz((xgcParams.eq_max_r-xgcParams.eq_min_r)/static_cast<vtkm::FloatDefault>(xgcParams.eq_mr-1),
                   (xgcParams.eq_max_z-xgcParams.eq_min_z)/static_cast<vtkm::FloatDefault>(xgcParams.eq_mz-1));
 
-  const vtkm::FloatDefault dR = 0.005;
+  const vtkm::FloatDefault dR = 0.000001;
 
   vtkm::Id ID = 0;
   for (std::size_t i = 0; i < thetaVals.size(); i++)
@@ -1801,7 +1796,7 @@ GenerateThetaPsiSeeds(std::map<std::string, std::vector<std::string>>& args,
   return seeds;
 }
 
-vtkm::cont::ArrayHandle<vtkm::Particle>
+std::vector<vtkm::Particle>
 GenerateSeeds(const vtkm::cont::DataSet& ds,
               XGCParameters& xgcParams,
               std::map<std::string, std::vector<std::string>>& args)
@@ -1954,13 +1949,20 @@ GenerateSeeds(const vtkm::cont::DataSet& ds,
     std::cout<<"Seeds= "<<seeds<<std::endl;
   }
 
+  if (args.find("--bothDir") != args.end())
+  {
+    seeds.reserve(2*seeds.size());
+    seeds.insert(seeds.end(), seeds.begin(), seeds.end());
+
+    seedsThetaPsi.reserve(2*seedsThetaPsi.size());
+    seedsThetaPsi.insert(seedsThetaPsi.end(), seedsThetaPsi.begin(), seedsThetaPsi.end());
+  }
+  std::cout<<" ****** Num Seeds= "<<seeds.size()<<std::endl;
+
   if (args.find("--dumpSeeds") != args.end())
     DumpSeeds(seeds, seedsThetaPsi, xgcParams);
 
-  std::cout<<" ****** Num Seeds= "<<seeds.size()<<std::endl;
-
-  auto seedsArray = vtkm::cont::make_ArrayHandle(seeds, vtkm::CopyFlag::On);
-  return seedsArray;
+  return seeds;
 }
 
 void
@@ -1978,7 +1980,7 @@ StreamingPoincare(std::map<std::string, std::vector<std::string>>& args)
   adiosStuff["data"] = new adiosS(adios, fName, "3d", adios2::Mode::Read);
   auto dataStuff = adiosStuff["data"];
 
-  vtkm::cont::ArrayHandle<vtkm::Particle> seeds;
+  std::vector<vtkm::Particle> seeds;
   adios2::StepStatus status;
   int step = 0;
   while (true)
@@ -2019,11 +2021,10 @@ StreamingPoincare(std::map<std::string, std::vector<std::string>>& args)
     std::cout<<step<<": Read data timeStep= "<<timeStep<<std::endl;
     dataStuff->engine.EndStep();
 
-    vtkm::cont::ArrayHandle<vtkm::Particle> seedsCopy;
     if (step == 0) //create the seeds...
       seeds = GenerateSeeds(ds, xgcParams, args);
 
-    vtkm::cont::ArrayCopy(seeds, seedsCopy);
+    auto seedsCopy = seeds;
 
     std::cout<<"Dump to "<<outputFile<<std::endl;
     Poincare(ds, xgcParams, seedsCopy, args, timeStep);
