@@ -1624,12 +1624,16 @@ public:
     if (this->UseDeltaBScale)
       deltaB_rzp = deltaB_rzp * this->DeltaBScale;
 
+    vtkm::Vec3f B0_rzp = pInfo.B0_rzp;
+    if (this->UseBScale)
+      B0_rzp = B0_rzp * this->BScale;
+
     deltaB_rzp[2] /= R;
-    pInfo.B0_rzp[2] /= R;
+    B0_rzp[2] /= R;
 
     //std::cout<<"Evaluate: "<<ptRPZ<<" : psi= "<<pInfo.Psi<<" B0= "<<pInfo.B0_rzp<<std::endl;
 
-    vtkm::Vec3f vec_rzp = pInfo.B0_rzp + deltaB_rzp;
+    vtkm::Vec3f vec_rzp = B0_rzp + deltaB_rzp;
     vtkm::Vec3f vec_rpz(vec_rzp[0], vec_rzp[2], vec_rzp[1]);
     res = vec_rpz;
     return true;
@@ -1715,6 +1719,8 @@ public:
 
   bool UseDeltaBScale = false;
   vtkm::FloatDefault DeltaBScale = 1.0;
+  bool UseBScale = false;
+  vtkm::FloatDefault BScale = 1.0;
 };
 
 #endif

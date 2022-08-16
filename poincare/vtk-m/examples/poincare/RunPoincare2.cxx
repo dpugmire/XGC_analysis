@@ -50,17 +50,32 @@ RunPoincare2(const vtkm::cont::DataSet& ds,
     validateInterpSkip = static_cast<vtkm::Id>(std::stoi(args["--validateInterpolation"][0].c_str()));
   }
 
-  bool useDeltaBScale = false;
-  vtkm::FloatDefault deltaBScale = 1.0;
+  bool useDeltaBScale = false, useBScale = false;
+  vtkm::FloatDefault deltaBScale = 1.0, bScale = 1.0;
   if (args.find("--deltaBScale") != args.end())
   {
     useDeltaBScale = true;
     deltaBScale = std::atof(args["--deltaBScale"][0].c_str());
   }
+  if (args.find("--BScale") != args.end())
+  {
+    useBScale = true;
+    bScale = std::atof(args["--BScale"][0].c_str());
+  }
 
   auto cellSet = ds.GetCellSet().Cast<vtkm::cont::CellSetSingleType<>>();
 
   vtkm::cont::CellLocatorTwoLevel locator2L;
+  if (args.find("--LocatorDensity") != args.end())
+  {
+    auto d = args["--LocatorDensity"];
+    vtkm::FloatDefault density1 = std::atof(d[0].c_str());
+    vtkm::FloatDefault density2 = std::atof(d[1].c_str());
+    locator2L.SetDensityL1(density1);
+    locator2L.SetDensityL2(density2);
+    std::cout<<"SetDensity: "<<density1<<" "<<density2<<std::endl;
+  }
+
   locator2L.SetCellSet(cellSet);
   locator2L.SetCoordinates(ds.GetCoordinateSystem());
   auto startL = std::chrono::steady_clock::now();
@@ -94,6 +109,9 @@ RunPoincare2(const vtkm::cont::DataSet& ds,
   worklet.ValidateInterpolationSkip = validateInterpSkip;
   worklet.UseDeltaBScale = useDeltaBScale;
   worklet.DeltaBScale = deltaBScale;
+  worklet.UseBScale = useBScale;
+  worklet.BScale = bScale;
+  worklet.UseBOnly = useBOnly;
 
   auto seedsArray = vtkm::cont::make_ArrayHandle(seeds, vtkm::CopyFlag::On);
 
